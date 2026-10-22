@@ -17,7 +17,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@openasy/ui": "https://github.com/openasy/ui/releases/download/v0.3.0/openasy-ui-0.3.0.tgz",
+    "@openasy/ui": "https://github.com/openasy/ui/releases/download/v0.4.0/openasy-ui-0.4.0.tgz",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

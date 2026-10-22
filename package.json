@@ -1,0 +1,41 @@
+{
+  "name": "@openasy/siem",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenAsy SIEM: security events, Sigma detection rules and the signals they raise.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/openasy/siem.git"
+  },
+  "scripts": {
+    "dev": "vite --config web/vite.config.ts",
+    "start": "node server/main.ts",
+    "build": "vite build --config web/vite.config.ts && node scripts/build-docs.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p web",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@openasy/ui": "https://github.com/openasy/ui/releases/download/v0.3.0/openasy-ui-0.3.0.tgz",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "ajv": "^8.20.0",
+    "lucide-react": "^1.59.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "swagger-ui-dist": "^5.34.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=26.12.0",
+    "npm": ">=11"
+  },
+  "dependencies": {
+    "@openasy/auth": "https://github.com/openasy/auth/releases/download/v0.4.0/openasy-auth-0.4.0.tgz"
+  }
+}

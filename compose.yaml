@@ -1,0 +1,35 @@
+# SIEM. Shippers send security events; Sigma rules turn them into signals (ADR 0040).
+#
+#   openssl rand -hex 32 > openasy-kek   # siem's key: sign-in secrets (ADR 0021). Keep it with your backups
+#   docker compose up -d
+#   docker compose logs siem | grep 'no owner yet'   # the one-time link that creates the owner account
+services:
+  siem:
+    image: ghcr.io/openasy/siem:0.1.0
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: [/tmp]
+    ports:
+      - "127.0.0.1:8080:8080"   # UI and API; put a TLS proxy in front to reach it from elsewhere
+    volumes:
+      - siem-data:/data   # SQLite database: events, rules and signals
+    secrets:
+      - openasy-kek   # mounted at /run/secrets/openasy-kek
+    environment:
+      # The address people open SIEM at; with a TLS proxy in front, its https:// URL.
+      SIEM_PUBLIC_URL: ${SIEM_PUBLIC_URL:-http://localhost:8080}
+      # For shippers and scripts: it can send events and nothing else. Or use an API token with the editor role from Settings.
+      SIEM_INGEST_TOKEN: ${SIEM_INGEST_TOKEN:-}
+      # Sign in with your identity provider (OIDC), see the README:
+      # SIEM_OIDC_ISSUER: https://login.example.com
+      # SIEM_OIDC_CLIENT_ID: siem
+      # SIEM_OIDC_CLIENT_SECRET: ${SIEM_OIDC_CLIENT_SECRET}
+
+volumes:
+  siem-data:
+
+secrets:
+  openasy-kek:
+    file: ./openasy-kek

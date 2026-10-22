@@ -1,0 +1,31 @@
+/* The few layouts this product needs that @openasy/ui's prebuilt styles do not include. Colours stay in the library's tokens. */
+
+/* One line of a long message in a table cell; the full text is in the title. */
+.siem-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 32rem;
+  overflow-wrap: anywhere;
+}
+
+/* Messages and field values break anywhere rather than widening their column. */
+.siem-wrap {
+  overflow-wrap: anywhere;
+}
+
+.siem-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Field names and values side by side. */
+.siem-pairs {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 0.75rem;
+  row-gap: 0.125rem;
+  margin: 0;
+}

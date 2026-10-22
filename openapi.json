@@ -1,0 +1,1844 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "OpenAsy SIEM API",
+    "version": "0.1.0",
+    "summary": "Security events, Sigma detection rules and the signals they raise.",
+    "description": "Every screen of siem uses this API, and so can your shippers and scripts (ADR 0014). Within `/api/v1` changes are additive only; anything removed is deprecated first (ADR 0024). Errors use Problem Details (RFC 9457).\n\nSend events with `SIEM_INGEST_TOKEN`. Everything else takes the session of a signed-in person or an API token, and each operation names the role it needs (`x-openasy-role`: viewer, editor, admin; ADR 0003).\n\nSign-in, members and API tokens are under `/api/v1/auth`, provided by [@openasy/auth](https://github.com/openasy/auth#routes).",
+    "license": {
+      "name": "AGPL-3.0-only",
+      "identifier": "AGPL-3.0-only"
+    }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "This siem"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Events",
+      "description": "What happened on hosts and services, as it arrived."
+    },
+    {
+      "name": "Rules",
+      "description": "Sigma rules that turn events into signals."
+    },
+    {
+      "name": "Signals",
+      "description": "What the rules found, to investigate and close."
+    },
+    {
+      "name": "Product",
+      "description": "Version and overview of this siem."
+    }
+  ],
+  "paths": {
+    "/api/v1/events": {
+      "post": {
+        "operationId": "sendEvents",
+        "tags": [
+          "Events"
+        ],
+        "summary": "Send events",
+        "security": [
+          {
+            "ingestToken": []
+          },
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "One event, or an array of up to 1000. Events are flat JSON objects. If any event in the request is not valid, none of them is kept and the message names the first.\n\n```bash\ncurl -sf -X POST -H \"Authorization: Bearer $SIEM_INGEST_TOKEN\" -H 'content-type: application/json' \\\n  -d '{\"host\":\"web-1\",\"source\":\"sshd\",\"message\":\"Failed password for root\"}' \\\n  https://siem.example.com/api/v1/events\n```\n\nThe body may be gzipped (`Content-Encoding: gzip`), up to 16 MiB unpacked.\n\nTakes SIEM_INGEST_TOKEN, or an API token with the editor role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewEvents"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Kept, and run through every enabled rule.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventsAccepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "editor"
+      },
+      "get": {
+        "operationId": "searchEvents",
+        "tags": [
+          "Events"
+        ],
+        "summary": "Search events",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "query",
+            "required": false,
+            "description": "Exact host.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "description": "Exact source.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Text in the message or any field.",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "description": "Events at or after this time.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "description": "Events at or before this time.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The previous page's nextCursor.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/events/{id}": {
+      "get": {
+        "operationId": "getEvent",
+        "tags": [
+          "Events"
+        ],
+        "summary": "Get an event",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The event's number.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The event.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/rules": {
+      "get": {
+        "operationId": "listRules",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "List rules",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The previous page's nextCursor.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "By title.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      },
+      "post": {
+        "operationId": "createRule",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Add a rule",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Sigma YAML or JSON. Supported: selections of fields with the modifiers contains, startswith, endswith, re and all; keyword lists; conditions with and, or, not, parentheses, `1 of`, `any of` and `all of` over names, patterns and `them`. Aggregations and timeframes are refused with a message.\n\nNeeds the admin role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewRule"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Rule"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "admin"
+      }
+    },
+    "/api/v1/rules/test": {
+      "post": {
+        "operationId": "testRule",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Test a rule",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Runs rule text over the newest events, so it can be checked before it goes live.\n\nNeeds the editor role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRule"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What the rule would have matched. Nothing is saved or alerted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleTest"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "editor"
+      }
+    },
+    "/api/v1/rules/{id}": {
+      "get": {
+        "operationId": "getRule",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Get a rule",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The rule's id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rule.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Rule"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      },
+      "patch": {
+        "operationId": "updateRule",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Change a rule",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Switch it on or off, or replace its text. Signals it made stay.\n\nNeeds the admin role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The rule's id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRule"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The rule.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Rule"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "admin"
+      },
+      "delete": {
+        "operationId": "deleteRule",
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Delete a rule",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the admin role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The rule's id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted; its signals stay."
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "admin"
+      }
+    },
+    "/api/v1/signals": {
+      "get": {
+        "operationId": "listSignals",
+        "tags": [
+          "Signals"
+        ],
+        "summary": "List signals",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "A signal is what one rule found on one host within a window (60 minutes by default): the events are counted, not repeated.\n\nNeeds the viewer role.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "`open` (default) is new and investigating.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "new",
+                "investigating",
+                "closed",
+                "false-positive"
+              ],
+              "default": "open"
+            }
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "required": false,
+            "description": "Comma-separated severities, such as `critical,high`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "host",
+            "in": "query",
+            "required": false,
+            "description": "Exact host.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rule",
+            "in": "query",
+            "required": false,
+            "description": "A rule's id.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "The previous page's nextCursor.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Most severe first, then most recent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/signals/{id}": {
+      "get": {
+        "operationId": "getSignal",
+        "tags": [
+          "Signals"
+        ],
+        "summary": "Get a signal",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The signal's id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The signal with its first events.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      },
+      "patch": {
+        "operationId": "updateSignal",
+        "tags": [
+          "Signals"
+        ],
+        "summary": "Change a signal's status",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "A closed or false-positive signal no longer collects matches: the next match is a new signal.\n\nNeeds the editor role.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The signal's id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignalUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The signal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Signal"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "editor"
+      }
+    },
+    "/api/v1/summary": {
+      "get": {
+        "operationId": "getSummary",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Overview",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "responses": {
+          "200": {
+            "description": "Counts for the whole install.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Summary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/api/v1/version": {
+      "get": {
+        "operationId": "getVersion",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Version",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The running version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Version"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/products": {
+      "get": {
+        "operationId": "listProducts",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Other products of this install",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Needs the viewer role.",
+        "responses": {
+          "200": {
+            "description": "From OPENASY_PRODUCTS, for the product switcher.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "liveness",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Liveness",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The process is running.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readiness",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Readiness",
+        "description": "Ready while the database answers.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Ready to serve.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The database is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "metrics",
+        "tags": [
+          "Product"
+        ],
+        "summary": "Prometheus metrics",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Metrics in the Prometheus text format.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-openasy-session",
+        "description": "The browser session after signing in (`openasy-session` when siem runs on plain http://localhost). Requests that change something must come from the siem origin."
+      },
+      "apiToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "An API token created under Settings \u2192 API tokens (`oa_siem_...`): one role, always an expiry (ADR 0003)."
+      },
+      "adminToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Only when siem is started by its tests or a local script: one shared token with the admin role. A production install does not have it."
+      },
+      "ingestToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "`SIEM_INGEST_TOKEN`: for log shippers and scripts. It can send events, nothing else."
+      }
+    },
+    "responses": {
+      "Problem": {
+        "description": "An error, as RFC 9457 Problem Details.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "invalid-token",
+              "invalid-json",
+              "invalid-body",
+              "conflict",
+              "invalid-event",
+              "invalid-rule",
+              "not-found",
+              "not-configured",
+              "payload-too-large",
+              "internal-error",
+              "unauthenticated",
+              "invalid-credentials",
+              "mfa-required",
+              "mfa-setup-required",
+              "forbidden",
+              "cross-site",
+              "rate-limited"
+            ],
+            "description": "Stable; match on this."
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "ProductLink": {
+        "type": "object",
+        "required": [
+          "id",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The product, as OpenAsy names it.",
+            "examples": [
+              "infrastructure"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The address people open it at.",
+            "examples": [
+              "https://infra.example.com"
+            ]
+          }
+        }
+      },
+      "ProductList": {
+        "type": "object",
+        "required": [
+          "products"
+        ],
+        "properties": {
+          "products": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductLink"
+            }
+          }
+        }
+      },
+      "Status": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "Level": {
+        "type": "string",
+        "enum": [
+          "critical",
+          "high",
+          "medium",
+          "low"
+        ]
+      },
+      "Version": {
+        "type": "object",
+        "required": [
+          "product",
+          "version"
+        ],
+        "properties": {
+          "product": {
+            "const": "siem"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "Event": {
+        "type": "object",
+        "required": [
+          "id",
+          "time",
+          "host",
+          "source",
+          "message",
+          "fields",
+          "receivedAt"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "host": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "message": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "fields": {
+            "type": "object",
+            "description": "Every other field, as sent.",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "receivedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EventList": {
+        "type": "object",
+        "required": [
+          "events"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Event"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "description": "Pass the previous page's nextCursor to get the next page."
+          }
+        }
+      },
+      "NewEvent": {
+        "type": "object",
+        "description": "A flat JSON object: text, numbers, true/false or null. `time` is an ISO 8601 date or milliseconds since 1970 (default: now); `host`, `source` and `message` are text and are what search and signals use. Up to 64 fields and 16 KiB.",
+        "maxProperties": 64,
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "properties": {
+          "time": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "host": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "NewEvents": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/NewEvent"
+          },
+          {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1000,
+            "items": {
+              "$ref": "#/components/schemas/NewEvent"
+            }
+          }
+        ]
+      },
+      "EventsAccepted": {
+        "type": "object",
+        "required": [
+          "accepted",
+          "signals"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "type": "integer"
+          },
+          "signals": {
+            "type": "integer",
+            "description": "Signals created or counted up by these events."
+          }
+        }
+      },
+      "Rule": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "level",
+          "enabled",
+          "description",
+          "tags",
+          "source",
+          "matches",
+          "lastMatchAt",
+          "lastError",
+          "createdBy",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/Level"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "description": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source": {
+            "type": "string",
+            "description": "The rule as written."
+          },
+          "matches": {
+            "type": "integer"
+          },
+          "lastMatchAt": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "format": "date-time"
+              }
+            ]
+          },
+          "lastError": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "Why the rule was left out or failed, or null."
+          },
+          "createdBy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RuleList": {
+        "type": "object",
+        "required": [
+          "rules"
+        ],
+        "properties": {
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Rule"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "description": "Pass the previous page's nextCursor to get the next page."
+          }
+        }
+      },
+      "NewRule": {
+        "type": "object",
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string",
+            "maxLength": 65536,
+            "description": "Sigma YAML or JSON."
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "UpdateRule": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "source": {
+            "type": "string",
+            "maxLength": 65536
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TestRule": {
+        "type": "object",
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string",
+            "maxLength": 65536
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5000,
+            "default": 1000,
+            "description": "How many of the newest events to try."
+          }
+        }
+      },
+      "RuleTest": {
+        "type": "object",
+        "required": [
+          "rule",
+          "evaluated",
+          "matches",
+          "hosts",
+          "events"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "rule": {
+            "type": "object",
+            "required": [
+              "title",
+              "level"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "level": {
+                "$ref": "#/components/schemas/Level"
+              }
+            }
+          },
+          "evaluated": {
+            "type": "integer"
+          },
+          "matches": {
+            "type": "integer"
+          },
+          "hosts": {
+            "type": "integer",
+            "description": "Hosts the matching events came from."
+          },
+          "events": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "$ref": "#/components/schemas/Event"
+            }
+          }
+        }
+      },
+      "Signal": {
+        "type": "object",
+        "required": [
+          "id",
+          "rule",
+          "severity",
+          "host",
+          "status",
+          "reason",
+          "changedBy",
+          "count",
+          "firstSeen",
+          "lastSeen"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "object",
+            "required": [
+              "id",
+              "title"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "description": "Null once the rule is deleted."
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Level"
+          },
+          "host": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "new",
+              "investigating",
+              "closed",
+              "false-positive"
+            ]
+          },
+          "reason": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "changedBy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "count": {
+            "type": "integer"
+          },
+          "firstSeen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeen": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SignalList": {
+        "type": "object",
+        "required": [
+          "signals"
+        ],
+        "properties": {
+          "signals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Signal"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "description": "Pass the previous page's nextCursor to get the next page."
+          }
+        }
+      },
+      "SignalDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Signal"
+          },
+          {
+            "type": "object",
+            "required": [
+              "events"
+            ],
+            "properties": {
+              "events": {
+                "type": "array",
+                "maxItems": 5,
+                "description": "The first matching events that are still kept.",
+                "items": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "SignalUpdate": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "new",
+              "investigating",
+              "closed",
+              "false-positive"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Required for a false positive."
+          }
+        }
+      },
+      "Summary": {
+        "type": "object",
+        "required": [
+          "events",
+          "eventsLastDay",
+          "lastEventAt",
+          "rules",
+          "open"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "type": "integer"
+          },
+          "eventsLastDay": {
+            "type": "integer"
+          },
+          "lastEventAt": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "format": "date-time"
+              }
+            ]
+          },
+          "rules": {
+            "type": "object",
+            "required": [
+              "total",
+              "enabled",
+              "failing"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "enabled": {
+                "type": "integer"
+              },
+              "failing": {
+                "type": "integer",
+                "description": "Rules with an error."
+              }
+            }
+          },
+          "open": {
+            "type": "object",
+            "required": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ],
+            "properties": {
+              "critical": {
+                "type": "integer"
+              },
+              "high": {
+                "type": "integer"
+              },
+              "medium": {
+                "type": "integer"
+              },
+              "low": {
+                "type": "integer"
+              }
+            },
+            "description": "Open signals (new or investigating) by severity."
+          }
+        }
+      }
+    }
+  }
+}

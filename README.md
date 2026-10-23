@@ -85,7 +85,7 @@ backups.
 | `SIEM_SIGNAL_WINDOW_MINUTES` | `60` | Matches of one rule on one host closer together than this are one signal |
 | `SIEM_METRICS_PORT` | | Serve `/metrics` on this port only (ADR 0026) |
 | `SIEM_HEADLESS` | `false` | `true` serves only the API |
-| `SIEM_PASSWORD_SIGN_IN`, `SIEM_OIDC_*` | | Sign-in, as in every OpenAsy product ([@openasy/auth](https://github.com/openasy/auth)). Owners can also add identity providers under Settings, Sign-in |
+| `SIEM_PASSWORD_SIGN_IN`, `OPENASY_OIDC_*` | | Sign-in, as in every OpenAsy product ([@openasy/auth](https://github.com/openasy/auth)). Owners can also add identity providers under Settings, Sign-in |
 
 The container runs as non-root with a read-only root filesystem, no capabilities and `no-new-privileges`.
 

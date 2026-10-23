@@ -23,9 +23,9 @@ services:
       # For shippers and scripts: it can send events and nothing else. Or use an API token with the editor role from Settings.
       SIEM_INGEST_TOKEN: ${SIEM_INGEST_TOKEN:-}
       # Sign in with your identity provider (OIDC), see the README:
-      # SIEM_OIDC_ISSUER: https://login.example.com
-      # SIEM_OIDC_CLIENT_ID: siem
-      # SIEM_OIDC_CLIENT_SECRET: ${SIEM_OIDC_CLIENT_SECRET}
+      # OPENASY_OIDC_ISSUER: https://login.example.com
+      # OPENASY_OIDC_CLIENT_ID: siem
+      # OPENASY_OIDC_CLIENT_SECRET: ${OPENASY_OIDC_CLIENT_SECRET}
 
 volumes:
   siem-data:

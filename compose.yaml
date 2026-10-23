@@ -12,11 +12,11 @@ services:
     security_opt: ["no-new-privileges:true"]
     tmpfs: [/tmp]
     ports:
-      - "127.0.0.1:8080:8080"   # UI and API; put a TLS proxy in front to reach it from elsewhere
+      - "127.0.0.1:8080:8080" # UI and API; put a TLS proxy in front to reach it from elsewhere
     volumes:
-      - siem-data:/data   # SQLite database: events, rules and signals
+      - siem-data:/data # SQLite database: events, rules and signals
     secrets:
-      - openasy-kek   # mounted at /run/secrets/openasy-kek
+      - openasy-kek # mounted at /run/secrets/openasy-kek
     environment:
       # The address people open SIEM at; with a TLS proxy in front, its https:// URL.
       SIEM_PUBLIC_URL: ${SIEM_PUBLIC_URL:-http://localhost:8080}

@@ -60,7 +60,7 @@ function inlineList(s: string, n: number): unknown[] {
     if (quote) {
       cur += c;
       if (c === quote) quote = null;
-    } else if (c === '"' || c === "'") (quote = c, (cur += c));
+    } else if (c === '"' || c === "'") ((quote = c), (cur += c));
     else if (c === ",") (items.push(cur), (cur = ""));
     else cur += c;
   }
@@ -73,12 +73,15 @@ const KEY = /^("(?:[^"\\]|\\.)*"|'(?:[^']|'')*'|[^\s:#'"][^:]*?)\s*:(?:\s+(.*))?
 export function parseYaml(text: string): unknown {
   if (/^---\s*$/m.test(text.trim().replace(/^---\s*\n/, ""))) fail(1, "more than one document is not supported.");
   const lines: Line[] = [];
-  text.replace(/^---\s*\n/, "").split(/\r?\n/).forEach((raw, i) => {
-    if (/^\t/.test(raw)) fail(i + 1, "indent with spaces, not tabs.");
-    const body = stripComment(raw).replace(/\s+$/, "");
-    if (!body.trim()) return;
-    lines.push({ n: i + 1, indent: body.length - body.trimStart().length, text: body.trimStart() });
-  });
+  text
+    .replace(/^---\s*\n/, "")
+    .split(/\r?\n/)
+    .forEach((raw, i) => {
+      if (raw.startsWith("\t")) fail(i + 1, "indent with spaces, not tabs.");
+      const body = stripComment(raw).replace(/\s+$/, "");
+      if (!body.trim()) return;
+      lines.push({ n: i + 1, indent: body.length - body.trimStart().length, text: body.trimStart() });
+    });
   if (!lines.length) return null;
   let pos = 0;
 

@@ -86,7 +86,8 @@ export function parseEvent(raw: unknown, at: string): NewEvent {
   const fields: Event = {};
   for (const [k, v] of entries) {
     if (!FIELD.test(k)) throw err(`the field name "${k.slice(0, 40)}" is not allowed; use letters, digits, . _ @ and -, starting with a letter.`);
-    if (v !== null && typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean") throw err(`"${k}" must be text, a number, true/false or null; events are flat.`);
+    if (v !== null && typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean")
+      throw err(`"${k}" must be text, a number, true/false or null; events are flat.`);
     if (typeof v === "string" && v.length > MAX_VALUE) throw err(`"${k}" may have at most ${MAX_VALUE} characters.`);
     fields[k] = v;
   }
@@ -230,7 +231,9 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
       db.exec("BEGIN IMMEDIATE");
       try {
         const insert = db.prepare("INSERT INTO events (time, host, source, message, fields, received_at) VALUES (?, ?, ?, ?, ?, ?)");
-        const find = db.prepare("SELECT id, first_seen, samples FROM signals WHERE rule_id = ? AND host = ? AND status IN ('new', 'investigating') AND last_seen >= ? ORDER BY last_seen DESC LIMIT 1");
+        const find = db.prepare(
+          "SELECT id, first_seen, samples FROM signals WHERE rule_id = ? AND host = ? AND status IN ('new', 'investigating') AND last_seen >= ? ORDER BY last_seen DESC LIMIT 1",
+        );
         const hit = db.prepare("UPDATE rules SET matches = matches + 1, last_match_at = ? WHERE id = ?");
         const failed = new Set<string>();
         for (const e of events) {
@@ -251,11 +254,18 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
             if (open) {
               const samples = JSON.parse(open.samples) as number[];
               if (samples.length < SAMPLES) samples.push(id);
-              db.prepare("UPDATE signals SET count = count + 1, last_seen = MAX(last_seen, ?), first_seen = MIN(first_seen, ?), samples = ? WHERE id = ?").run(e.time, e.time, JSON.stringify(samples), open.id);
+              db.prepare("UPDATE signals SET count = count + 1, last_seen = MAX(last_seen, ?), first_seen = MIN(first_seen, ?), samples = ? WHERE id = ?").run(
+                e.time,
+                e.time,
+                JSON.stringify(samples),
+                open.id,
+              );
               touched.add(open.id);
             } else {
               const sid = randomUUID();
-              db.prepare("INSERT INTO signals (id, rule_id, rule_title, severity, host, count, first_seen, last_seen, samples) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)").run(sid, ruleId, rule.title, rule.level, host, e.time, e.time, JSON.stringify([id]));
+              db.prepare(
+                "INSERT INTO signals (id, rule_id, rule_title, severity, host, count, first_seen, last_seen, samples) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
+              ).run(sid, ruleId, rule.title, rule.level, host, e.time, e.time, JSON.stringify([id]));
               touched.add(sid);
             }
           }
@@ -268,7 +278,11 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
       return { accepted: events.length, signals: touched.size };
     },
 
-    searchEvents(f: { host?: string; source?: string; q?: string; since?: string; until?: string }, cursor: string | undefined, limit: number): Page<ReturnType<typeof present>> {
+    searchEvents(
+      f: { host?: string; source?: string; q?: string; since?: string; until?: string },
+      cursor: string | undefined,
+      limit: number,
+    ): Page<ReturnType<typeof present>> {
       const where: string[] = [];
       const args: SQLInputValue[] = [];
       if (f.host) (where.push("host = ?"), args.push(f.host));
@@ -281,7 +295,9 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
         args.push(like, like);
       }
       const offset = decodeCursor(cursor);
-      const rows = db.prepare(`SELECT * FROM events ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY time DESC, id DESC LIMIT ? OFFSET ?`).all(...args, limit + 1, offset) as unknown as EventRow[];
+      const rows = db
+        .prepare(`SELECT * FROM events ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY time DESC, id DESC LIMIT ? OFFSET ?`)
+        .all(...args, limit + 1, offset) as unknown as EventRow[];
       return { items: rows.slice(0, limit).map(present), ...(rows.length > limit && { nextCursor: encodeCursor(offset + limit) }) };
     },
 
@@ -296,10 +312,20 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
       const { source, enabled = true, ...rest } = body;
       if (Object.keys(rest).length || typeof enabled !== "boolean") throw bad("Expected { source, enabled? }.");
       const rule = compile(source);
-      if ((db.prepare("SELECT COUNT(*) AS n FROM rules").get() as { n: number }).n >= MAX_RULES) throw new SiemError(409, "conflict", `At most ${MAX_RULES} rules.`);
+      if ((db.prepare("SELECT COUNT(*) AS n FROM rules").get() as { n: number }).n >= MAX_RULES)
+        throw new SiemError(409, "conflict", `At most ${MAX_RULES} rules.`);
       const id = randomUUID();
       const at = now();
-      db.prepare("INSERT INTO rules (id, title, level, enabled, source, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(id, rule.title, rule.level, enabled ? 1 : 0, source as string, by, at, at);
+      db.prepare("INSERT INTO rules (id, title, level, enabled, source, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
+        id,
+        rule.title,
+        rule.level,
+        enabled ? 1 : 0,
+        source as string,
+        by,
+        at,
+        at,
+      );
       if (enabled) compiled.set(id, rule);
       return presentRule(ruleRow(id));
     },
@@ -319,7 +345,14 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
       if (enabled !== undefined && typeof enabled !== "boolean") throw bad("enabled must be true or false.");
       const next = source === undefined ? undefined : compile(source);
       const on = enabled === undefined ? current.enabled === 1 : enabled;
-      db.prepare("UPDATE rules SET enabled = ?, source = ?, title = ?, level = ?, last_error = NULL, updated_at = ? WHERE id = ?").run(on ? 1 : 0, next ? (source as string) : current.source, next?.title ?? current.title, next?.level ?? current.level, now(), id);
+      db.prepare("UPDATE rules SET enabled = ?, source = ?, title = ?, level = ?, last_error = NULL, updated_at = ? WHERE id = ?").run(
+        on ? 1 : 0,
+        next ? (source as string) : current.source,
+        next?.title ?? current.title,
+        next?.level ?? current.level,
+        now(),
+        id,
+      );
       if (!on) compiled.delete(id);
       else {
         try {
@@ -339,7 +372,8 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
     /** Runs rule text over the newest events without saving anything, so a rule is checked before it goes live. */
     testRule(body: Record<string, unknown>) {
       const { source, limit = 1000, ...rest } = body;
-      if (Object.keys(rest).length || typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 5000) throw bad("Expected { source, limit? }; limit is between 1 and 5000.");
+      if (Object.keys(rest).length || typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 5000)
+        throw bad("Expected { source, limit? }; limit is between 1 and 5000.");
       const rule = compile(source);
       const rows = db.prepare("SELECT * FROM events ORDER BY time DESC, id DESC LIMIT ?").all(limit) as unknown as EventRow[];
       const matched: EventRow[] = [];
@@ -360,7 +394,11 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
     },
 
     // ------------------------------------------------------------ Signals
-    signals(f: { status?: Status | "open"; severity?: Level[]; host?: string; rule?: string }, cursor: string | undefined, limit: number): Page<ReturnType<typeof presentSignal>> {
+    signals(
+      f: { status?: Status | "open"; severity?: Level[]; host?: string; rule?: string },
+      cursor: string | undefined,
+      limit: number,
+    ): Page<ReturnType<typeof presentSignal>> {
       const where: string[] = [];
       const args: SQLInputValue[] = [];
       if (f.status === "open") where.push("status IN ('new', 'investigating')");
@@ -369,33 +407,50 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
       if (f.host) (where.push("host = ?"), args.push(f.host));
       if (f.rule) (where.push("rule_id = ?"), args.push(f.rule));
       const offset = decodeCursor(cursor);
-      const rows = db.prepare(`SELECT * FROM signals ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY ${RANK_SQL} DESC, last_seen DESC, id LIMIT ? OFFSET ?`).all(...args, limit + 1, offset) as Array<Record<string, any>>;
+      const rows = db
+        .prepare(`SELECT * FROM signals ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY ${RANK_SQL} DESC, last_seen DESC, id LIMIT ? OFFSET ?`)
+        .all(...args, limit + 1, offset) as Array<Record<string, any>>;
       return { items: rows.slice(0, limit).map(presentSignal), ...(rows.length > limit && { nextCursor: encodeCursor(offset + limit) }) };
     },
 
     signal(id: string) {
       const s = signalRow(id);
       const ids = JSON.parse(s.samples) as number[];
-      const events = ids.length ? (db.prepare(`SELECT * FROM events WHERE id IN (${ids.map(() => "?").join(",")}) ORDER BY time, id`).all(...ids) as unknown as EventRow[]).map(present) : [];
+      const events = ids.length
+        ? (db.prepare(`SELECT * FROM events WHERE id IN (${ids.map(() => "?").join(",")}) ORDER BY time, id`).all(...ids) as unknown as EventRow[]).map(present)
+        : [];
       return { ...presentSignal(s), events };
     },
 
     setStatus(id: string, body: Record<string, unknown>, by: string) {
       signalRow(id);
       const { status, reason, ...rest } = body;
-      if (Object.keys(rest).length || typeof status !== "string" || !STATUSES.includes(status as Status)) throw bad(`Expected { status, reason? }; status is one of ${STATUSES.join(", ")}.`);
+      if (Object.keys(rest).length || typeof status !== "string" || !STATUSES.includes(status as Status))
+        throw bad(`Expected { status, reason? }; status is one of ${STATUSES.join(", ")}.`);
       if (reason !== undefined && (typeof reason !== "string" || reason.length > 500)) throw bad("reason must be text of at most 500 characters.");
       // A false positive without a why teaches nobody (ADR 0040).
-      if (status === "false-positive" && (typeof reason !== "string" || reason.trim().length < 3)) throw bad("reason is required for a false positive: 3 to 500 characters.");
-      db.prepare("UPDATE signals SET status = ?, reason = ?, changed_by = ? WHERE id = ?").run(status, typeof reason === "string" && reason.trim() ? reason.trim() : null, by, id);
+      if (status === "false-positive" && (typeof reason !== "string" || reason.trim().length < 3))
+        throw bad("reason is required for a false positive: 3 to 500 characters.");
+      db.prepare("UPDATE signals SET status = ?, reason = ?, changed_by = ? WHERE id = ?").run(
+        status,
+        typeof reason === "string" && reason.trim() ? reason.trim() : null,
+        by,
+        id,
+      );
       return presentSignal(signalRow(id));
     },
 
     summary() {
       const day = new Date(Date.now() - 86_400_000).toISOString();
       const open: Record<Level, number> = { critical: 0, high: 0, medium: 0, low: 0 };
-      for (const r of db.prepare("SELECT severity, COUNT(*) AS n FROM signals WHERE status IN ('new', 'investigating') GROUP BY severity").all() as Array<{ severity: Level; n: number }>) open[r.severity] = r.n;
-      const rules = db.prepare("SELECT COUNT(*) AS total, COALESCE(SUM(enabled), 0) AS enabled, COALESCE(SUM(last_error IS NOT NULL), 0) AS failing FROM rules").get() as { total: number; enabled: number; failing: number };
+      for (const r of db.prepare("SELECT severity, COUNT(*) AS n FROM signals WHERE status IN ('new', 'investigating') GROUP BY severity").all() as Array<{
+        severity: Level;
+        n: number;
+      }>)
+        open[r.severity] = r.n;
+      const rules = db
+        .prepare("SELECT COUNT(*) AS total, COALESCE(SUM(enabled), 0) AS enabled, COALESCE(SUM(last_error IS NOT NULL), 0) AS failing FROM rules")
+        .get() as { total: number; enabled: number; failing: number };
       return {
         events: (db.prepare("SELECT COUNT(*) AS n FROM events").get() as { n: number }).n,
         eventsLastDay: (db.prepare("SELECT COUNT(*) AS n FROM events WHERE received_at >= ?").get(day) as { n: number }).n,

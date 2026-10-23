@@ -30,7 +30,20 @@ import {
 import { AccountSettings, AuthGate, MembersSettings, SignInSettings, TokensSettings, useAuth } from "@openasy/auth/react";
 import { Bell, FlaskConical, KeyRound, LogIn, LogOut, Plus, ScrollText, Settings2, ShieldCheck, Trash2, UserRound, Users, X } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { api, MfaSetupRequired, Unauthorized, type Event, type Level, type ProductLink, type Rule, type RuleTest, type Signal, type SignalDetail, type Status, type Summary } from "./api.ts";
+import {
+  api,
+  MfaSetupRequired,
+  Unauthorized,
+  type Event,
+  type Level,
+  type ProductLink,
+  type Rule,
+  type RuleTest,
+  type Signal,
+  type SignalDetail,
+  type Status,
+  type Summary,
+} from "./api.ts";
 import { useT, type T } from "./i18n.ts";
 
 const PAGES = ["rules", "events", "setup", "account", "members", "signin", "tokens"] as const;
@@ -62,7 +75,12 @@ function useApi() {
 type Call = ReturnType<typeof useApi>;
 
 const LEVELS: Level[] = ["critical", "high", "medium", "low"];
-const STATUS_LABEL = (t: T): Record<Status, string> => ({ new: "New", investigating: "Investigating", closed: "Closed", "false-positive": t("statusLabel.falsePositive") });
+const STATUS_LABEL = (t: T): Record<Status, string> => ({
+  new: "New",
+  investigating: "Investigating",
+  closed: "Closed",
+  "false-positive": t("statusLabel.falsePositive"),
+});
 
 function Code({ children }: { children: ReactNode }) {
   return <pre className="m-0 overflow-x-auto rounded-md bg-subtle px-2.5 py-2 font-mono text-xs text-fg">{children}</pre>;
@@ -148,7 +166,8 @@ function SignalPanel({ id, call, onClose, onChanged }: { id: string; call: Call;
             <StatusChip status={signal.status} />
           </div>
           <p className="m-0 text-xs text-fg-muted">
-            {t("signalPanel.first")}{" "}{ago(signal.firstSeen)}{t("signalPanel.last")}{" "}{ago(signal.lastSeen)}
+            {t("signalPanel.first")} {ago(signal.firstSeen)}
+            {t("signalPanel.last")} {ago(signal.lastSeen)}
             {signal.changedBy ? ` · ${signal.changedBy}` : ""}
           </p>
           {signal.reason && <p className="m-0">{signal.reason}</p>}
@@ -202,7 +221,13 @@ function SignalPanel({ id, call, onClose, onChanged }: { id: string; call: Call;
               </>
             }
           >
-            <TextField label={t("signalPanel.reason")} value={reason} onChange={(e) => setReason(e.target.value)} hint={deciding === "false-positive" ? t("signalPanel.required") : t("signalPanel.optional")} error={error} />
+            <TextField
+              label={t("signalPanel.reason")}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              hint={deciding === "false-positive" ? t("signalPanel.required") : t("signalPanel.optional")}
+              error={error}
+            />
           </Dialog>
         </div>
       )}
@@ -232,7 +257,14 @@ function SignalsPage({ call, summary, reload }: { call: Call; summary?: Summary;
     },
     [call, tab, sev, host],
   );
-  const load = useCallback(() => void query().then((r) => (setRows(r.signals), setMore(r.nextCursor)), () => setRows([])), [query]);
+  const load = useCallback(
+    () =>
+      void query().then(
+        (r) => (setRows(r.signals), setMore(r.nextCursor)),
+        () => setRows([]),
+      ),
+    [query],
+  );
   useEffect(load, [load]);
   const loadMore = () => more && query(more).then((r) => (setRows((x) => [...(x ?? []), ...r.signals]), setMore(r.nextCursor)));
 
@@ -242,12 +274,28 @@ function SignalsPage({ call, summary, reload }: { call: Call; summary?: Summary;
     { id: "host", header: t("signalsPage.host"), cell: (s) => <span className="font-mono text-xs">{s.host}</span> },
     { id: "count", header: t("signalsPage.events"), align: "right", cell: (s) => s.count },
     { id: "status", header: t("signalsPage.status"), cell: (s) => <StatusChip status={s.status} /> },
-    { id: "last", header: t("signalsPage.lastSeen"), sortValue: (s) => s.lastSeen, cell: (s) => <span className="text-xs whitespace-nowrap">{ago(s.lastSeen)}</span> },
+    {
+      id: "last",
+      header: t("signalsPage.lastSeen"),
+      sortValue: (s) => s.lastSeen,
+      cell: (s) => <span className="text-xs whitespace-nowrap">{ago(s.lastSeen)}</span>,
+    },
   ];
   const s = summary;
   return (
     <>
-      <PageHeader title={t("signalsPage.signals")} description={s ? t("signalsPage.keptLastEventOn", { plural: t("plurals.event", { count: s.events }), ago: ago(s.lastEventAt), plural2: t("plurals.rule", { count: s.rules.enabled }) }) : undefined} />
+      <PageHeader
+        title={t("signalsPage.signals")}
+        description={
+          s
+            ? t("signalsPage.keptLastEventOn", {
+                plural: t("plurals.event", { count: s.events }),
+                ago: ago(s.lastEventAt),
+                plural2: t("plurals.rule", { count: s.rules.enabled }),
+              })
+            : undefined
+        }
+      />
       {s && (
         <KpiGrid minWidth={150}>
           {LEVELS.map((l) => (
@@ -268,7 +316,12 @@ function SignalsPage({ call, summary, reload }: { call: Call; summary?: Summary;
         ]}
       />
       <FilterBar onClear={() => (setSev([]), setHost(""))}>
-        <FacetFilter label={t("signalsPage.severity")} selected={sev} onChange={setSev} options={LEVELS.map((l) => ({ value: l, label: l.charAt(0).toUpperCase() + l.slice(1), count: tab === "open" ? s?.open[l] : undefined }))} />
+        <FacetFilter
+          label={t("signalsPage.severity")}
+          selected={sev}
+          onChange={setSev}
+          options={LEVELS.map((l) => ({ value: l, label: l.charAt(0).toUpperCase() + l.slice(1), count: tab === "open" ? s?.open[l] : undefined }))}
+        />
         <SearchInput label={t("signalsPage.host")} className="w-56" value={host} onChange={(e) => setHost(e.target.value)} />
       </FilterBar>
       <div className={open ? "grid gap-2.5 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]" : "grid gap-2.5"}>
@@ -298,11 +351,11 @@ function SignalsPage({ call, summary, reload }: { call: Call; summary?: Summary;
               <EmptyState title={tab === "open" ? t("signalsPage.noOpenSignals") : t("signalsPage.nothingHere")}>
                 {s && s.events === 0 ? (
                   <>
-                    {t("signalsPage.noEventsHaveArrivedSee")}{" "}<a href="/setup">{t("signalsPage.setup")}</a>.
+                    {t("signalsPage.noEventsHaveArrivedSee")} <a href="/setup">{t("signalsPage.setup")}</a>.
                   </>
                 ) : s && s.rules.enabled === 0 ? (
                   <>
-                    {t("signalsPage.noRuleIsOnAdd")}{" "}<a href="/rules">{t("signalsPage.rules")}</a>.
+                    {t("signalsPage.noRuleIsOnAdd")} <a href="/rules">{t("signalsPage.rules")}</a>.
                   </>
                 ) : (
                   t("signalsPage.nothingMatchesTheseFilters")
@@ -347,7 +400,14 @@ function RulesPage({ call, reload }: { call: Call; reload: () => void }) {
   const [error, setError] = useState<string>();
   const [result, setResult] = useState<RuleTest>();
   const [testing, setTesting] = useState(false);
-  const load = useCallback(() => void call<{ rules: Rule[] }>("/api/v1/rules?limit=500").then((r) => setRows(r.rules), () => setRows([])), [call]);
+  const load = useCallback(
+    () =>
+      void call<{ rules: Rule[] }>("/api/v1/rules?limit=500").then(
+        (r) => setRows(r.rules),
+        () => setRows([]),
+      ),
+    [call],
+  );
   useEffect(load, [load]);
   const close = () => (setEditing(null), setError(undefined), setResult(undefined));
 
@@ -375,8 +435,16 @@ function RulesPage({ call, reload }: { call: Call; reload: () => void }) {
       setError((err as Error).message);
     }
   };
-  const toggle = (r: Rule) => call(`/api/v1/rules/${r.id}`, { method: "PATCH", body: JSON.stringify({ enabled: !r.enabled }) }).then(() => (load(), reload()), () => {});
-  const remove = (r: Rule) => call(`/api/v1/rules/${r.id}`, { method: "DELETE" }).then(() => (load(), reload()), () => {});
+  const toggle = (r: Rule) =>
+    call(`/api/v1/rules/${r.id}`, { method: "PATCH", body: JSON.stringify({ enabled: !r.enabled }) }).then(
+      () => (load(), reload()),
+      () => {},
+    );
+  const remove = (r: Rule) =>
+    call(`/api/v1/rules/${r.id}`, { method: "DELETE" }).then(
+      () => (load(), reload()),
+      () => {},
+    );
 
   const columns: Column<Rule>[] = [
     { id: "sev", header: t("rulesPage.level"), width: "104px", cell: (r) => <SeverityBadge severity={r.level} /> },
@@ -394,11 +462,17 @@ function RulesPage({ call, reload }: { call: Call; reload: () => void }) {
       ),
     },
     { id: "matches", header: t("rulesPage.matches"), align: "right", cell: (r) => r.matches },
-    { id: "last", header: t("rulesPage.lastMatch"), cell: (r) => <span className="text-xs whitespace-nowrap">{r.lastMatchAt ? ago(r.lastMatchAt) : "never"}</span> },
+    {
+      id: "last",
+      header: t("rulesPage.lastMatch"),
+      cell: (r) => <span className="text-xs whitespace-nowrap">{r.lastMatchAt ? ago(r.lastMatchAt) : "never"}</span>,
+    },
     {
       id: "on",
       header: t("rulesPage.on"),
-      cell: (r) => <Switch checked={r.enabled} disabled={!can("admin")} onCheckedChange={() => void toggle(r)} label={t("rulesPage.isOn", { title: r.title })} />,
+      cell: (r) => (
+        <Switch checked={r.enabled} disabled={!can("admin")} onCheckedChange={() => void toggle(r)} label={t("rulesPage.isOn", { title: r.title })} />
+      ),
     },
     {
       id: "actions",
@@ -439,7 +513,9 @@ function RulesPage({ call, reload }: { call: Call; reload: () => void }) {
           loading={!rows}
           getRowId={(r) => r.id}
           minWidth={820}
-          empty={<EmptyState title={t("rulesPage.noRulesYet")}>{can("admin") ? t("rulesPage.addASigmaRuleTo") : t("rulesPage.anAdminAddsTheRules")}</EmptyState>}
+          empty={
+            <EmptyState title={t("rulesPage.noRulesYet")}>{can("admin") ? t("rulesPage.addASigmaRuleTo") : t("rulesPage.anAdminAddsTheRules")}</EmptyState>
+          }
         />
       </Panel>
       <Dialog
@@ -475,7 +551,8 @@ function RulesPage({ call, reload }: { call: Call; reload: () => void }) {
         {result && (
           <div className="flex flex-col gap-1 text-sm">
             <span>
-              {t("rulesPage.wouldHaveMatched")}{" "}{t("plurals.event", { count: result.matches })} {t("rulesPage.ofTheNewest")}{" "}{result.evaluated}{t("rulesPage.on2")}{" "}{t("plurals.host", { count: result.hosts })}.
+              {t("rulesPage.wouldHaveMatched")} {t("plurals.event", { count: result.matches })} {t("rulesPage.ofTheNewest")} {result.evaluated}
+              {t("rulesPage.on2")} {t("plurals.host", { count: result.hosts })}.
             </span>
             <ul className="siem-list flex flex-col gap-1.5">
               {result.events.map((e) => (
@@ -508,11 +585,24 @@ function EventsPage({ call }: { call: Call }) {
     },
     [call, q, host],
   );
-  useEffect(() => void query().then((r) => (setRows(r.events), setMore(r.nextCursor)), () => setRows([])), [query]);
+  useEffect(
+    () =>
+      void query().then(
+        (r) => (setRows(r.events), setMore(r.nextCursor)),
+        () => setRows([]),
+      ),
+    [query],
+  );
   const loadMore = () => more && query(more).then((r) => (setRows((x) => [...(x ?? []), ...r.events]), setMore(r.nextCursor)));
 
   const columns: Column<Event>[] = [
-    { id: "time", header: t("eventsPage.time"), width: "180px", sortValue: (e) => e.time, cell: (e) => <span className="text-xs whitespace-nowrap">{new Date(e.time).toLocaleString()}</span> },
+    {
+      id: "time",
+      header: t("eventsPage.time"),
+      width: "180px",
+      sortValue: (e) => e.time,
+      cell: (e) => <span className="text-xs whitespace-nowrap">{new Date(e.time).toLocaleString()}</span>,
+    },
     { id: "host", header: t("eventsPage.host"), cell: (e) => <span className="font-mono text-xs">{e.host ?? "–"}</span> },
     { id: "source", header: t("eventsPage.source"), cell: (e) => e.source ?? "–" },
     { id: "message", header: t("eventsPage.message"), width: "48%", cell: (e) => <span className="siem-clamp text-xs">{e.message ?? ""}</span> },
@@ -547,7 +637,7 @@ function EventsPage({ call }: { call: Call }) {
             pageSize={50}
             empty={
               <EmptyState title={t("eventsPage.noEvents")}>
-                {t("eventsPage.nothingMatchesOrNothingHas")}{" "}<a href="/setup">{t("eventsPage.setup")}</a>.
+                {t("eventsPage.nothingMatchesOrNothingHas")} <a href="/setup">{t("eventsPage.setup")}</a>.
               </EmptyState>
             }
           />
@@ -603,7 +693,11 @@ function WelcomePage() {
   const t = useT();
   return (
     <>
-      <PageHeader title={t("welcomePage.getStarted")} description={t("welcomePage.sendEventsThenAddRules")} actions={<StatusBadge tone="info">{t("welcomePage.waitingForTheFirstEvent")}</StatusBadge>} />
+      <PageHeader
+        title={t("welcomePage.getStarted")}
+        description={t("welcomePage.sendEventsThenAddRules")}
+        actions={<StatusBadge tone="info">{t("welcomePage.waitingForTheFirstEvent")}</StatusBadge>}
+      />
       <SetupPage />
     </>
   );
@@ -618,8 +712,14 @@ function SettingsPage({ page }: { page: "account" | "members" | "signin" | "toke
   if (page !== "account" && !can("admin")) return <EmptyState title={t("settingsPage.adminsOnly")}>{t("settingsPage.askAnAdminOfThis")}</EmptyState>;
   const titles = {
     account: ["Account", "Your profile, password, two-step verification and where you are signed in."],
-    members: ["Members", "Who can sign in to this siem, and with which role. Viewers see everything; editors also work signals and test rules; admins also add and change rules, and manage members and tokens."],
-    signin: ["Sign-in", "Identity providers people can sign in with, such as OpenAsy Identity, Keycloak or Microsoft Entra ID, and which of their groups give which role."],
+    members: [
+      "Members",
+      "Who can sign in to this siem, and with which role. Viewers see everything; editors also work signals and test rules; admins also add and change rules, and manage members and tokens.",
+    ],
+    signin: [
+      "Sign-in",
+      "Identity providers people can sign in with, such as OpenAsy Identity, Keycloak or Microsoft Entra ID, and which of their groups give which role.",
+    ],
     tokens: ["API tokens", "For scripts and CI. Each token has one role and an expiry; the secret is shown once."],
   } as const;
   return (

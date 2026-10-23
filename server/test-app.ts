@@ -13,7 +13,11 @@ export const ADMIN_TOKEN = "test-admin-token";
 export const rule = (title: string, detection: string, level = "high") => `title: ${title}\nlevel: ${level}\ndetection:\n${detection.replace(/^/gm, "  ")}\n`;
 
 export const FAILED_LOGIN = rule("Failed login", "selection:\n  message|contains: 'Failed password'\ncondition: selection", "medium");
-export const MIMIKATZ = rule("Credential dumping tool", "selection:\n  Image|endswith: '\\\\mimikatz.exe'\nfilter:\n  User: SYSTEM\ncondition: selection and not filter", "critical");
+export const MIMIKATZ = rule(
+  "Credential dumping tool",
+  "selection:\n  Image|endswith: '\\\\mimikatz.exe'\nfilter:\n  User: SYSTEM\ncondition: selection and not filter",
+  "critical",
+);
 
 export async function startApp(opts: Omit<Partial<AppOptions>, "siem"> & { version: string; siem?: SiemOptions }) {
   const db = openDb(":memory:");
@@ -26,7 +30,10 @@ export async function startApp(opts: Omit<Partial<AppOptions>, "siem"> & { versi
   const auth = createAuth({ db, product: "siem", productName: "OpenAsy SIEM", origin: base });
   const { siem: _options, ...rest } = opts;
   handler = createApp({ db, siem, auth, ingestToken: INGEST_TOKEN, adminToken: ADMIN_TOKEN, ...rest });
-  const as = (token: string) => (path: string, init: RequestInit = {}) => fetch(base + path, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json", ...init.headers } });
+  const as =
+    (token: string) =>
+    (path: string, init: RequestInit = {}) =>
+      fetch(base + path, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json", ...init.headers } });
   const admin = as(ADMIN_TOKEN);
   const ingest = as(INGEST_TOKEN);
   /** Sends events the way a shipper does. */

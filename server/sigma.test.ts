@@ -129,7 +129,9 @@ describe("conditions", () => {
 
 describe("rule metadata and refusals", () => {
   it("reads title, id, level, tags and takes JSON too", () => {
-    const r = compileRule("title: Odd login\nid: 1b2c\nstatus: test\nlevel: informational\ndescription: d\ntags:\n  - attack.t1078\ndetection:\n  s:\n    a: 1\n  condition: s");
+    const r = compileRule(
+      "title: Odd login\nid: 1b2c\nstatus: test\nlevel: informational\ndescription: d\ntags:\n  - attack.t1078\ndetection:\n  s:\n    a: 1\n  condition: s",
+    );
     expect(r).toMatchObject({ title: "Odd login", id: "1b2c", status: "test", level: "low", description: "d", tags: ["attack.t1078"] });
     const j = compileRule(JSON.stringify({ title: "J", level: "critical", detection: { s: { a: 1 }, condition: "s" } }));
     expect(j.level).toBe("critical");

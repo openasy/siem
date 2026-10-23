@@ -18,8 +18,17 @@ describe("OPENASY_PRODUCTS", () => {
   });
 
   it("leaves out entries that are not id=address, and repeats", () => {
-    const { products, invalid } = parseProducts("vpn,=https://a.example.com,Logs=https://b.example.com,logs=ftp://c.example.com,logs=not a url,vpn=https://vpn.example.com,vpn=https://other.example.com");
+    const { products, invalid } = parseProducts(
+      "vpn,=https://a.example.com,Logs=https://b.example.com,logs=ftp://c.example.com,logs=not a url,vpn=https://vpn.example.com,vpn=https://other.example.com",
+    );
     expect(products).toEqual([{ id: "vpn", url: "https://vpn.example.com" }]);
-    expect(invalid).toEqual(["vpn", "=https://a.example.com", "Logs=https://b.example.com", "logs=ftp://c.example.com", "logs=not a url", "vpn=https://other.example.com"]);
+    expect(invalid).toEqual([
+      "vpn",
+      "=https://a.example.com",
+      "Logs=https://b.example.com",
+      "logs=ftp://c.example.com",
+      "logs=not a url",
+      "vpn=https://other.example.com",
+    ]);
   });
 });

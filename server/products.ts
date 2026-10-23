@@ -11,7 +11,10 @@ export interface ProductLink {
 export function parseProducts(value: string | undefined): { products: ProductLink[]; invalid: string[] } {
   const products: ProductLink[] = [];
   const invalid: string[] = [];
-  for (const entry of (value ?? "").split(",").map((e) => e.trim()).filter(Boolean)) {
+  for (const entry of (value ?? "")
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean)) {
     const at = entry.indexOf("=");
     const id = entry.slice(0, at).trim();
     const url = URL.parse(entry.slice(at + 1).trim());

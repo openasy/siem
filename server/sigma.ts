@@ -49,7 +49,8 @@ const BACKTRACKS = /\([^)]*[+*][^)]*\)[+*{]/;
 type Test = (actual: string) => boolean;
 
 function valueTest(expected: unknown, mods: string[], where: string): Test {
-  if (typeof expected !== "string" && typeof expected !== "number" && typeof expected !== "boolean") throw new SigmaError(`${where}: a value must be text, a number or true/false.`);
+  if (typeof expected !== "string" && typeof expected !== "number" && typeof expected !== "boolean")
+    throw new SigmaError(`${where}: a value must be text, a number or true/false.`);
   const text = String(expected);
   if (mods.includes("re")) {
     if (text.length > MAX_PATTERN) throw new SigmaError(`${where}: a regular expression may have at most ${MAX_PATTERN} characters.`);
@@ -85,9 +86,12 @@ type Pred = (event: Event) => boolean;
 function fieldPredicate(spec: string, expected: unknown, where: string): Pred {
   const [field, ...mods] = spec.split("|");
   if (!field) throw new SigmaError(`${where}: a field name is missing before "|".`);
-  for (const m of mods) if (!MODIFIERS.has(m)) throw new SigmaError(`${where}: the modifier "${m}" is not supported (supported: ${[...MODIFIERS].join(", ")}).`);
-  if (mods.includes("re") && mods.some((m) => m !== "re" && m !== "all")) throw new SigmaError(`${where}: "re" cannot be combined with contains, startswith or endswith.`);
-  if (mods.filter((m) => m === "contains" || m === "startswith" || m === "endswith").length > 1) throw new SigmaError(`${where}: use one of contains, startswith and endswith.`);
+  for (const m of mods)
+    if (!MODIFIERS.has(m)) throw new SigmaError(`${where}: the modifier "${m}" is not supported (supported: ${[...MODIFIERS].join(", ")}).`);
+  if (mods.includes("re") && mods.some((m) => m !== "re" && m !== "all"))
+    throw new SigmaError(`${where}: "re" cannot be combined with contains, startswith or endswith.`);
+  if (mods.filter((m) => m === "contains" || m === "startswith" || m === "endswith").length > 1)
+    throw new SigmaError(`${where}: use one of contains, startswith and endswith.`);
   const all = mods.includes("all");
   const values = Array.isArray(expected) ? expected : [expected];
   if (!values.length) throw new SigmaError(`${where}: the list of values is empty.`);
@@ -122,7 +126,8 @@ function selectionPredicate(name: string, def: unknown): Pred {
 
 // ---------------------------------------------------------------- Conditions
 
-type Node = { op: "ref"; name: string } | { op: "of"; quantifier: "1" | "all"; names: string[] } | { op: "not"; a: Node } | { op: "and" | "or"; a: Node; b: Node };
+type Node =
+  { op: "ref"; name: string } | { op: "of"; quantifier: "1" | "all"; names: string[] } | { op: "not"; a: Node } | { op: "and" | "or"; a: Node; b: Node };
 
 function tokens(condition: string): string[] {
   return condition.match(/\(|\)|[^\s()]+/g) ?? [];
@@ -135,7 +140,17 @@ function parseCondition(source: string, names: string[]): Node {
   const peek = () => t[i];
   const next = () => t[i++];
   const expand = (pattern: string): string[] => {
-    const found = pattern === "them" ? names : names.filter((n) => new RegExp(`^${pattern.split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`).test(n));
+    const found =
+      pattern === "them"
+        ? names
+        : names.filter((n) =>
+            new RegExp(
+              `^${pattern
+                .split("*")
+                .map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+                .join(".*")}$`,
+            ).test(n),
+          );
     if (!found.length) throw new SigmaError(`The condition names "${pattern}", which matches nothing in detection.`);
     return found;
   };
@@ -220,7 +235,8 @@ export function compileRule(source: string): Rule {
   const names = Object.keys(selections);
   if (!names.length) throw new SigmaError("detection needs at least one selection.");
   const conditions = (Array.isArray(condition) ? condition : [condition]).filter((c) => c !== undefined);
-  if (!conditions.length || conditions.some((c) => typeof c !== "string" || !c.trim())) throw new SigmaError("detection needs a condition, such as `selection`.");
+  if (!conditions.length || conditions.some((c) => typeof c !== "string" || !c.trim()))
+    throw new SigmaError("detection needs a condition, such as `selection`.");
   const preds = new Map<string, Pred>(names.map((n) => [n, selectionPredicate(n, selections[n])]));
   const trees = (conditions as string[]).map((c) => parseCondition(c, names));
   return {

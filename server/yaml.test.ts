@@ -42,7 +42,11 @@ tags:
   });
 
   it("keeps colons, hashes and backslashes inside values", () => {
-    expect(parseYaml("path: C:\\Windows\\System32\nurl: 'http://x/#frag'\nq: \"a # b\"\n")).toEqual({ path: "C:\\Windows\\System32", url: "http://x/#frag", q: "a # b" });
+    expect(parseYaml("path: C:\\Windows\\System32\nurl: 'http://x/#frag'\nq: \"a # b\"\n")).toEqual({
+      path: "C:\\Windows\\System32",
+      url: "http://x/#frag",
+      q: "a # b",
+    });
   });
 
   it("says where it cannot read", () => {

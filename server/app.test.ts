@@ -11,7 +11,13 @@ afterAll(() => app.close());
 
 const json = async (res: Response) => (await res.json()) as any;
 const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
-const ssh = (host: string, minutesAgo = 1, extra: Record<string, unknown> = {}) => ({ time: at(minutesAgo), host, source: "sshd", message: "Failed password for root from 10.0.0.9", ...extra });
+const ssh = (host: string, minutesAgo = 1, extra: Record<string, unknown> = {}) => ({
+  time: at(minutesAgo),
+  host,
+  source: "sshd",
+  message: "Failed password for root from 10.0.0.9",
+  ...extra,
+});
 
 describe("rules", () => {
   it("adds a rule from Sigma YAML, or JSON, and says what is wrong with a bad one", async () => {
@@ -28,12 +34,17 @@ describe("rules", () => {
     expect((await app.addRule("")).status).toBe(422);
     expect((await app.admin("/api/v1/rules", { method: "POST", body: JSON.stringify({ source: FAILED_LOGIN, extra: 1 }) })).status).toBe(422);
     expect((await app.addRule("x".repeat(70_000))).status).toBe(413);
-    expect((await json(await app.admin("/api/v1/rules"))).rules.map((r: { title: string }) => r.title)).toEqual(["Credential dumping tool", "Failed login", "From JSON"]);
+    expect((await json(await app.admin("/api/v1/rules"))).rules.map((r: { title: string }) => r.title)).toEqual([
+      "Credential dumping tool",
+      "Failed login",
+      "From JSON",
+    ]);
   });
 
   it("tests a rule against recent events before it is saved", async () => {
     await app.send([ssh("web-1", 5), ssh("web-2", 4), { time: at(3), host: "web-1", source: "audit", message: "ok" }]);
-    const test = async (source: string, limit?: number) => app.admin("/api/v1/rules/test", { method: "POST", body: JSON.stringify({ source, ...(limit !== undefined && { limit }) }) });
+    const test = async (source: string, limit?: number) =>
+      app.admin("/api/v1/rules/test", { method: "POST", body: JSON.stringify({ source, ...(limit !== undefined && { limit }) }) });
     const res = await json(await test(rule("Probe", "s:\n  message|contains: password\ncondition: s")));
     expect(res).toMatchObject({ rule: { title: "Probe", level: "high" }, evaluated: 3, matches: 2, hosts: 2 });
     expect(res.events).toHaveLength(2);
@@ -74,7 +85,10 @@ describe("events and signals", () => {
     expect((await json(await app.admin("/api/v1/signals?host=pc-1"))).signals).toEqual([]);
     const mimi = (await json(await app.admin("/api/v1/rules"))).rules.find((r: { title: string }) => r.title === "Credential dumping tool");
     expect((await app.admin(`/api/v1/rules/${mimi.id}`, { method: "PATCH", body: JSON.stringify({ enabled: true }) })).status).toBe(200);
-    await app.send([{ time: at(1), host: "pc-1", Image: "C:\\Tools\\Mimikatz.exe", User: "bob" }, { time: at(1), host: "pc-2", Image: "C:\\Tools\\Mimikatz.exe", User: "SYSTEM" }]);
+    await app.send([
+      { time: at(1), host: "pc-1", Image: "C:\\Tools\\Mimikatz.exe", User: "bob" },
+      { time: at(1), host: "pc-2", Image: "C:\\Tools\\Mimikatz.exe", User: "SYSTEM" },
+    ]);
     const signals = (await json(await app.admin("/api/v1/signals?host=pc-1"))).signals;
     expect(signals).toMatchObject([{ severity: "critical", count: 1 }]);
     expect((await json(await app.admin("/api/v1/signals?host=pc-2"))).signals).toEqual([]);
@@ -100,7 +114,10 @@ describe("events and signals", () => {
     expect((await set({ status: "false-positive" })).status).toBe(422);
     expect((await set({ status: "done" })).status).toBe(422);
     expect((await set({ status: "closed", reason: 5 })).status).toBe(422);
-    expect(await json(await set({ status: "false-positive", reason: "A scanner we run" }))).toMatchObject({ status: "false-positive", reason: "A scanner we run" });
+    expect(await json(await set({ status: "false-positive", reason: "A scanner we run" }))).toMatchObject({
+      status: "false-positive",
+      reason: "A scanner we run",
+    });
     expect((await json(await app.admin("/api/v1/signals?host=web-2"))).signals).toEqual([]);
     expect((await json(await app.admin("/api/v1/signals?status=false-positive"))).signals).toHaveLength(1);
     // A closed signal does not collect new matches: the next one is a new signal.
@@ -129,7 +146,11 @@ describe("events and signals", () => {
 describe("taking events", () => {
   it("accepts one event, a gzipped array, and defaults the time", async () => {
     expect(await json(await app.send({ host: "h", message: "hello" }))).toEqual({ accepted: 1, signals: 0 });
-    const gz = await app.ingest("/api/v1/events", { method: "POST", body: gzipSync(JSON.stringify([{ host: "h" }, { host: "h" }])), headers: { "content-encoding": "gzip" } });
+    const gz = await app.ingest("/api/v1/events", {
+      method: "POST",
+      body: gzipSync(JSON.stringify([{ host: "h" }, { host: "h" }])),
+      headers: { "content-encoding": "gzip" },
+    });
     expect(await json(gz)).toMatchObject({ accepted: 2 });
     expect((await json(await app.admin("/api/v1/events?host=h"))).events[0].time).toMatch(/^\d{4}-\d\d-\d\dT/);
   });
@@ -163,13 +184,27 @@ describe("taking events", () => {
       siem: {
         compile: (source) => {
           const real = compileRule(source);
-          return source.includes("Throws") ? { ...real, matches: () => { throw new Error("boom"); } } : real;
+          return source.includes("Throws")
+            ? {
+                ...real,
+                matches: () => {
+                  throw new Error("boom");
+                },
+              }
+            : real;
         },
       },
     });
     await failing.addRule(rule("Throws", "s:\n  message: x\ncondition: s"));
     const fine = await json(await failing.addRule(rule("Fine", "s:\n  message: ok\ncondition: s")));
-    expect(await json(await failing.send([{ host: "h", message: "ok" }, { host: "h", message: "ok" }]))).toEqual({ accepted: 2, signals: 1 });
+    expect(
+      await json(
+        await failing.send([
+          { host: "h", message: "ok" },
+          { host: "h", message: "ok" },
+        ]),
+      ),
+    ).toEqual({ accepted: 2, signals: 1 });
     const rules = (await json(await failing.admin("/api/v1/rules"))).rules;
     expect(rules.find((r: { title: string }) => r.title === "Throws").lastError).toBe("Failed on an event: boom");
     expect(rules.find((r: { id: string }) => r.id === fine.id).lastError).toBeNull();
@@ -206,14 +241,17 @@ describe("access", () => {
     expect((await app.admin(`/api/v1/rules/${r.id}`)).status).toBe(404);
     expect((await app.admin(`/api/v1/rules/${r.id}`, { method: "DELETE" })).status).toBe(404);
     expect((await json(await app.admin("/api/v1/signals?host=web-1"))).signals[0].rule).toEqual({ id: null, title: "Failed login" });
-    const patch = (body: unknown) => app.admin(`/api/v1/rules/${(r.id as string)}`, { method: "PATCH", body: JSON.stringify(body) });
+    const patch = (body: unknown) => app.admin(`/api/v1/rules/${r.id as string}`, { method: "PATCH", body: JSON.stringify(body) });
     expect((await patch({ enabled: false })).status).toBe(404);
   });
 
   it("changes a rule's text and level, and refuses a bad edit", async () => {
     const created = await json(await app.addRule(rule("Edit me", "s:\n  message: one\ncondition: s", "low")));
     const patch = (body: unknown) => app.admin(`/api/v1/rules/${created.id}`, { method: "PATCH", body: JSON.stringify(body) });
-    expect(await json(await patch({ source: rule("Edited", "s:\n  message: two\ncondition: s", "critical") }))).toMatchObject({ title: "Edited", level: "critical" });
+    expect(await json(await patch({ source: rule("Edited", "s:\n  message: two\ncondition: s", "critical") }))).toMatchObject({
+      title: "Edited",
+      level: "critical",
+    });
     expect((await patch({ source: "title: x" })).status).toBe(422);
     expect((await patch({})).status).toBe(422);
     expect((await patch({ enabled: "yes" })).status).toBe(422);

@@ -1,6 +1,6 @@
 {
   "name": "@openasy/siem",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "OpenAsy SIEM: security events, Sigma detection rules and the signals they raise.",
   "license": "AGPL-3.0-only",
@@ -22,7 +22,7 @@
   "prettier": "@openasy/code-style/prettier",
   "devDependencies": {
     "@openasy/code-style": "https://github.com/openasy/code-style/releases/download/v0.1.2/openasy-code-style-0.1.2.tgz",
-    "@openasy/ui": "https://github.com/openasy/ui/releases/download/v0.6.2/openasy-ui-0.6.2.tgz",
+    "@openasy/ui": "https://github.com/openasy/ui/releases/download/v0.7.0/openasy-ui-0.7.0.tgz",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

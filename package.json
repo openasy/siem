@@ -1,6 +1,6 @@
 {
   "name": "@openasy/siem",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "OpenAsy SIEM: security events, Sigma detection rules and the signals they raise.",
   "license": "AGPL-3.0-only",
@@ -43,6 +43,6 @@
     "npm": ">=11"
   },
   "dependencies": {
-    "@openasy/auth": "https://github.com/openasy/auth/releases/download/v0.7.0/openasy-auth-0.7.0.tgz"
+    "@openasy/auth": "https://github.com/openasy/auth/releases/download/v0.8.0/openasy-auth-0.8.0.tgz"
   }
 }

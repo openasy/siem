@@ -17,7 +17,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@openasy/ui": "https://github.com/openasy/ui/releases/download/v0.4.0/openasy-ui-0.4.0.tgz",
+    "@openasy/ui": "https://github.com/openasy/ui/releases/download/v0.6.2/openasy-ui-0.6.2.tgz",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -36,6 +36,6 @@
     "npm": ">=11"
   },
   "dependencies": {
-    "@openasy/auth": "https://github.com/openasy/auth/releases/download/v0.5.0/openasy-auth-0.5.0.tgz"
+    "@openasy/auth": "https://github.com/openasy/auth/releases/download/v0.7.0/openasy-auth-0.7.0.tgz"
   }
 }

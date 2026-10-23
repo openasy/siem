@@ -25,22 +25,13 @@ import {
   type Column,
   type ProductId,
   useThemePreference,
+  useAgo,
 } from "@openasy/ui";
 import { AccountSettings, AuthGate, MembersSettings, SignInSettings, TokensSettings, useAuth } from "@openasy/auth/react";
 import { Bell, FlaskConical, KeyRound, LogIn, LogOut, Plus, ScrollText, Settings2, ShieldCheck, Trash2, UserRound, Users, X } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { api, MfaSetupRequired, Unauthorized, type Event, type Level, type ProductLink, type Rule, type RuleTest, type Signal, type SignalDetail, type Status, type Summary } from "./api.ts";
-
-function ago(iso: string | null | undefined): string {
-  if (!iso) return "never";
-  const s = Math.round((Date.now() - Date.parse(iso)) / 1000);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.round(s / 60)} min ago`;
-  if (s < 86_400) return `${Math.round(s / 3600)} h ago`;
-  return `${Math.round(s / 86_400)} d ago`;
-}
-
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+import { useT, type T } from "./i18n.ts";
 
 const PAGES = ["rules", "events", "setup", "account", "members", "signin", "tokens"] as const;
 type Route = { page: "signals" | (typeof PAGES)[number] };
@@ -71,14 +62,15 @@ function useApi() {
 type Call = ReturnType<typeof useApi>;
 
 const LEVELS: Level[] = ["critical", "high", "medium", "low"];
-const STATUS_LABEL: Record<Status, string> = { new: "New", investigating: "Investigating", closed: "Closed", "false-positive": "False positive" };
+const STATUS_LABEL = (t: T): Record<Status, string> => ({ new: "New", investigating: "Investigating", closed: "Closed", "false-positive": t("statusLabel.falsePositive") });
 
 function Code({ children }: { children: ReactNode }) {
   return <pre className="m-0 overflow-x-auto rounded-md bg-subtle px-2.5 py-2 font-mono text-xs text-fg">{children}</pre>;
 }
 
 function StatusChip({ status }: { status: Status }) {
-  return <StatusBadge tone={status === "new" ? "danger" : status === "investigating" ? "warning" : "neutral"}>{STATUS_LABEL[status]}</StatusBadge>;
+  const t = useT();
+  return <StatusBadge tone={status === "new" ? "danger" : status === "investigating" ? "warning" : "neutral"}>{STATUS_LABEL(t)[status]}</StatusBadge>;
 }
 
 /** Fields of an event other than the four every event has, as a short list. */
@@ -114,6 +106,8 @@ function EventLine({ e }: { e: Event }) {
 // ---------------------------------------------------------------- Signals
 
 function SignalPanel({ id, call, onClose, onChanged }: { id: string; call: Call; onClose: () => void; onChanged: () => void }) {
+  const ago = useAgo();
+  const t = useT();
   const { can } = useAuth();
   const [signal, setSignal] = useState<SignalDetail>();
   const [deciding, setDeciding] = useState<Status | null>(null);
@@ -136,11 +130,11 @@ function SignalPanel({ id, call, onClose, onChanged }: { id: string; call: Call;
 
   return (
     <Panel
-      aria-label="Signal details"
-      title={signal?.rule.title ?? "Signal"}
-      description={signal ? `${signal.host} · ${plural(signal.count, "event")}` : undefined}
+      aria-label={t("signalPanel.signalDetails")}
+      title={signal?.rule.title ?? t("signalPanel.signal")}
+      description={signal ? `${signal.host} · ${t("plurals.event", { count: signal.count })}` : undefined}
       actions={
-        <IconButton label="Close details" size="sm" onClick={onClose}>
+        <IconButton label={t("signalPanel.closeDetails")} size="sm" onClick={onClose}>
           <X />
         </IconButton>
       }
@@ -154,39 +148,39 @@ function SignalPanel({ id, call, onClose, onChanged }: { id: string; call: Call;
             <StatusChip status={signal.status} />
           </div>
           <p className="m-0 text-xs text-fg-muted">
-            First {ago(signal.firstSeen)}, last {ago(signal.lastSeen)}
+            {t("signalPanel.first")}{" "}{ago(signal.firstSeen)}{t("signalPanel.last")}{" "}{ago(signal.lastSeen)}
             {signal.changedBy ? ` · ${signal.changedBy}` : ""}
           </p>
           {signal.reason && <p className="m-0">{signal.reason}</p>}
           <div className="flex flex-col gap-1">
-            <span className="text-2xs font-medium tracking-wider text-fg-muted uppercase">First events</span>
+            <span className="text-2xs font-medium tracking-wider text-fg-muted uppercase">{t("signalPanel.firstEvents")}</span>
             <ul className="siem-list flex flex-col gap-1.5">
               {signal.events.map((e) => (
                 <EventLine key={e.id} e={e} />
               ))}
-              {!signal.events.length && <li className="text-xs text-fg-muted">The events are older than the retention period.</li>}
+              {!signal.events.length && <li className="text-xs text-fg-muted">{t("signalPanel.theEventsAreOlderThan")}</li>}
             </ul>
           </div>
           {can("editor") && (
             <div className="flex flex-wrap gap-2 border-t border-line pt-3">
               {signal.status === "new" && (
                 <Button size="sm" onClick={() => void set("investigating")}>
-                  Investigate
+                  {t("signalPanel.investigate")}
                 </Button>
               )}
               {(signal.status === "new" || signal.status === "investigating") && (
                 <>
                   <Button size="sm" onClick={() => setDeciding("closed")}>
-                    Close
+                    {t("signalPanel.close")}
                   </Button>
                   <Button size="sm" onClick={() => setDeciding("false-positive")}>
-                    False positive
+                    {t("signalPanel.falsePositive")}
                   </Button>
                 </>
               )}
               {(signal.status === "closed" || signal.status === "false-positive") && (
                 <Button size="sm" onClick={() => void set("investigating")}>
-                  Reopen
+                  {t("signalPanel.reopen")}
                 </Button>
               )}
             </div>
@@ -194,21 +188,21 @@ function SignalPanel({ id, call, onClose, onChanged }: { id: string; call: Call;
           <Dialog
             open={deciding !== null}
             onOpenChange={(open) => !open && close()}
-            title={deciding === "false-positive" ? "Mark as a false positive" : "Close the signal"}
-            description="A closed signal does not collect new matches: the next one is a new signal. Say why, for the next person."
+            title={deciding === "false-positive" ? t("signalPanel.markAsAFalsePositive") : t("signalPanel.closeTheSignal")}
+            description={t("signalPanel.aClosedSignalDoesNot")}
             onSubmit={(e: FormEvent) => (e.preventDefault(), void set(deciding!, reason))}
             footer={
               <>
                 <Button type="button" onClick={close}>
-                  Cancel
+                  {t("signalPanel.cancel")}
                 </Button>
                 <Button type="submit" variant="primary" disabled={deciding === "false-positive" && reason.trim().length < 3}>
-                  Save
+                  {t("signalPanel.save")}
                 </Button>
               </>
             }
           >
-            <TextField label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} hint={deciding === "false-positive" ? "Required." : "Optional."} error={error} />
+            <TextField label={t("signalPanel.reason")} value={reason} onChange={(e) => setReason(e.target.value)} hint={deciding === "false-positive" ? t("signalPanel.required") : t("signalPanel.optional")} error={error} />
           </Dialog>
         </div>
       )}
@@ -219,6 +213,8 @@ function SignalPanel({ id, call, onClose, onChanged }: { id: string; call: Call;
 type Tab = "open" | "closed" | "false-positive";
 
 function SignalsPage({ call, summary, reload }: { call: Call; summary?: Summary; reload: () => void }) {
+  const ago = useAgo();
+  const t = useT();
   const [tab, setTab] = useState<Tab>("open");
   const [sev, setSev] = useState<string[]>([]);
   const [host, setHost] = useState("");
@@ -241,55 +237,55 @@ function SignalsPage({ call, summary, reload }: { call: Call; summary?: Summary;
   const loadMore = () => more && query(more).then((r) => (setRows((x) => [...(x ?? []), ...r.signals]), setMore(r.nextCursor)));
 
   const columns: Column<Signal>[] = [
-    { id: "sev", header: "Severity", width: "104px", cell: (s) => <SeverityBadge severity={s.severity} /> },
-    { id: "rule", header: "Rule", width: "32%", cell: (s) => <span className="siem-wrap text-sm font-medium">{s.rule.title}</span> },
-    { id: "host", header: "Host", cell: (s) => <span className="font-mono text-xs">{s.host}</span> },
-    { id: "count", header: "Events", align: "right", cell: (s) => s.count },
-    { id: "status", header: "Status", cell: (s) => <StatusChip status={s.status} /> },
-    { id: "last", header: "Last seen", sortValue: (s) => s.lastSeen, cell: (s) => <span className="text-xs whitespace-nowrap">{ago(s.lastSeen)}</span> },
+    { id: "sev", header: t("signalsPage.severity"), width: "104px", cell: (s) => <SeverityBadge severity={s.severity} /> },
+    { id: "rule", header: t("signalsPage.rule"), width: "32%", cell: (s) => <span className="siem-wrap text-sm font-medium">{s.rule.title}</span> },
+    { id: "host", header: t("signalsPage.host"), cell: (s) => <span className="font-mono text-xs">{s.host}</span> },
+    { id: "count", header: t("signalsPage.events"), align: "right", cell: (s) => s.count },
+    { id: "status", header: t("signalsPage.status"), cell: (s) => <StatusChip status={s.status} /> },
+    { id: "last", header: t("signalsPage.lastSeen"), sortValue: (s) => s.lastSeen, cell: (s) => <span className="text-xs whitespace-nowrap">{ago(s.lastSeen)}</span> },
   ];
   const s = summary;
   return (
     <>
-      <PageHeader title="Signals" description={s ? `${plural(s.events, "event")} kept · last event ${ago(s.lastEventAt)} · ${plural(s.rules.enabled, "rule")} on` : undefined} />
+      <PageHeader title={t("signalsPage.signals")} description={s ? t("signalsPage.keptLastEventOn", { plural: t("plurals.event", { count: s.events }), ago: ago(s.lastEventAt), plural2: t("plurals.rule", { count: s.rules.enabled }) }) : undefined} />
       {s && (
         <KpiGrid minWidth={150}>
           {LEVELS.map((l) => (
             <KpiCard key={l} label={l.charAt(0).toUpperCase() + l.slice(1)} value={s.open[l]} footer={<SeverityBadge severity={l} />} />
           ))}
-          <KpiCard label="Events, 24 hours" value={s.eventsLastDay} tone="info" />
-          <KpiCard label="Rules with an error" value={s.rules.failing} tone={s.rules.failing ? "warning" : "success"} />
+          <KpiCard label={t("signalsPage.events24Hours")} value={s.eventsLastDay} tone="info" />
+          <KpiCard label={t("signalsPage.rulesWithAnError")} value={s.rules.failing} tone={s.rules.failing ? "warning" : "success"} />
         </KpiGrid>
       )}
       <Tabs<Tab>
-        label="Signal views"
+        label={t("signalsPage.signalViews")}
         value={tab}
         onChange={setTab}
         items={[
-          { value: "open", label: "Open" },
-          { value: "closed", label: "Closed" },
-          { value: "false-positive", label: "False positives" },
+          { value: "open", label: t("signalsPage.open") },
+          { value: "closed", label: t("signalsPage.closed") },
+          { value: "false-positive", label: t("signalsPage.falsePositives") },
         ]}
       />
       <FilterBar onClear={() => (setSev([]), setHost(""))}>
-        <FacetFilter label="Severity" selected={sev} onChange={setSev} options={LEVELS.map((l) => ({ value: l, label: l.charAt(0).toUpperCase() + l.slice(1), count: tab === "open" ? s?.open[l] : undefined }))} />
-        <SearchInput label="Host" className="w-56" value={host} onChange={(e) => setHost(e.target.value)} />
+        <FacetFilter label={t("signalsPage.severity")} selected={sev} onChange={setSev} options={LEVELS.map((l) => ({ value: l, label: l.charAt(0).toUpperCase() + l.slice(1), count: tab === "open" ? s?.open[l] : undefined }))} />
+        <SearchInput label={t("signalsPage.host")} className="w-56" value={host} onChange={(e) => setHost(e.target.value)} />
       </FilterBar>
       <div className={open ? "grid gap-2.5 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]" : "grid gap-2.5"}>
         <Panel
-          title={tab === "open" ? "Open" : tab === "closed" ? "Closed" : "False positives"}
-          description="What the rules found, most severe first. One signal is one rule on one host within an hour."
+          title={tab === "open" ? t("signalsPage.open") : tab === "closed" ? t("signalsPage.closed") : t("signalsPage.falsePositives")}
+          description={t("signalsPage.whatTheRulesFoundMost")}
           flush
           footer={
             more ? (
               <Button size="sm" onClick={loadMore}>
-                Load more
+                {t("signalsPage.loadMore")}
               </Button>
             ) : undefined
           }
         >
           <DataTable
-            label="Signals"
+            label={t("signalsPage.signals")}
             columns={columns}
             rows={rows ?? []}
             loading={!rows}
@@ -299,17 +295,17 @@ function SignalsPage({ call, summary, reload }: { call: Call; summary?: Summary;
             minWidth={820}
             pageSize={50}
             empty={
-              <EmptyState title={tab === "open" ? "No open signals" : "Nothing here"}>
+              <EmptyState title={tab === "open" ? t("signalsPage.noOpenSignals") : t("signalsPage.nothingHere")}>
                 {s && s.events === 0 ? (
                   <>
-                    No events have arrived. See <a href="/setup">Setup</a>.
+                    {t("signalsPage.noEventsHaveArrivedSee")}{" "}<a href="/setup">{t("signalsPage.setup")}</a>.
                   </>
                 ) : s && s.rules.enabled === 0 ? (
                   <>
-                    No rule is on. Add one under <a href="/rules">Rules</a>.
+                    {t("signalsPage.noRuleIsOnAdd")}{" "}<a href="/rules">{t("signalsPage.rules")}</a>.
                   </>
                 ) : (
-                  "Nothing matches these filters."
+                  t("signalsPage.nothingMatchesTheseFilters")
                 )}
               </EmptyState>
             }
@@ -343,6 +339,8 @@ detection:
 `;
 
 function RulesPage({ call, reload }: { call: Call; reload: () => void }) {
+  const ago = useAgo();
+  const t = useT();
   const { can } = useAuth();
   const [rows, setRows] = useState<Rule[]>();
   const [editing, setEditing] = useState<{ id?: string; source: string } | null>(null);
@@ -381,10 +379,10 @@ function RulesPage({ call, reload }: { call: Call; reload: () => void }) {
   const remove = (r: Rule) => call(`/api/v1/rules/${r.id}`, { method: "DELETE" }).then(() => (load(), reload()), () => {});
 
   const columns: Column<Rule>[] = [
-    { id: "sev", header: "Level", width: "104px", cell: (r) => <SeverityBadge severity={r.level} /> },
+    { id: "sev", header: t("rulesPage.level"), width: "104px", cell: (r) => <SeverityBadge severity={r.level} /> },
     {
       id: "title",
-      header: "Rule",
+      header: t("rulesPage.rule"),
       width: "34%",
       sortValue: (r) => r.title,
       cell: (r) => (
@@ -395,25 +393,25 @@ function RulesPage({ call, reload }: { call: Call; reload: () => void }) {
         </span>
       ),
     },
-    { id: "matches", header: "Matches", align: "right", cell: (r) => r.matches },
-    { id: "last", header: "Last match", cell: (r) => <span className="text-xs whitespace-nowrap">{r.lastMatchAt ? ago(r.lastMatchAt) : "never"}</span> },
+    { id: "matches", header: t("rulesPage.matches"), align: "right", cell: (r) => r.matches },
+    { id: "last", header: t("rulesPage.lastMatch"), cell: (r) => <span className="text-xs whitespace-nowrap">{r.lastMatchAt ? ago(r.lastMatchAt) : "never"}</span> },
     {
       id: "on",
-      header: "On",
-      cell: (r) => <Switch checked={r.enabled} disabled={!can("admin")} onCheckedChange={() => void toggle(r)} label={`${r.title} is on`} />,
+      header: t("rulesPage.on"),
+      cell: (r) => <Switch checked={r.enabled} disabled={!can("admin")} onCheckedChange={() => void toggle(r)} label={t("rulesPage.isOn", { title: r.title })} />,
     },
     {
       id: "actions",
-      header: <span className="sr-only">Actions</span>,
-      label: "Actions",
+      header: <span className="sr-only">{t("rulesPage.actions")}</span>,
+      label: t("rulesPage.actions"),
       align: "right",
       cell: (r) =>
         can("admin") && (
           <span className="flex justify-end gap-1">
             <Button size="sm" onClick={() => setEditing({ id: r.id, source: r.source })}>
-              Edit
+              {t("rulesPage.edit")}
             </Button>
-            <IconButton label={`Delete ${r.title}`} size="sm" onClick={() => void remove(r)}>
+            <IconButton label={t("rulesPage.delete", { title: r.title })} size="sm" onClick={() => void remove(r)}>
               <Trash2 />
             </IconButton>
           </span>
@@ -423,49 +421,49 @@ function RulesPage({ call, reload }: { call: Call; reload: () => void }) {
   return (
     <>
       <PageHeader
-        title="Rules"
-        description="Sigma rules, as YAML or JSON. Every event is run through every rule that is on. Aggregations and timeframes are not supported yet."
+        title={t("rulesPage.rules")}
+        description={t("rulesPage.sigmaRulesAsYamlOr")}
         actions={
           can("admin") && (
             <Button variant="primary" icon={<Plus />} onClick={() => setEditing({ source: EXAMPLE })}>
-              Add rule
+              {t("rulesPage.addRule")}
             </Button>
           )
         }
       />
       <Panel flush>
         <DataTable
-          label="Rules"
+          label={t("rulesPage.rules")}
           columns={columns}
           rows={rows ?? []}
           loading={!rows}
           getRowId={(r) => r.id}
           minWidth={820}
-          empty={<EmptyState title="No rules yet">{can("admin") ? "Add a Sigma rule to turn events into signals." : "An admin adds the rules."}</EmptyState>}
+          empty={<EmptyState title={t("rulesPage.noRulesYet")}>{can("admin") ? t("rulesPage.addASigmaRuleTo") : t("rulesPage.anAdminAddsTheRules")}</EmptyState>}
         />
       </Panel>
       <Dialog
         open={editing !== null}
         onOpenChange={(open) => !open && close()}
-        title={editing?.id ? "Edit rule" : "Add a rule"}
-        description="Test it against the newest events before it goes live."
+        title={editing?.id ? t("rulesPage.editRule") : t("rulesPage.addARule")}
+        description={t("rulesPage.testItAgainstTheNewest")}
         onSubmit={save}
         footer={
           <>
             <Button type="button" icon={<FlaskConical />} onClick={() => void test()} disabled={testing || !editing?.source.trim()}>
-              {testing ? "Testing…" : "Test against recent events"}
+              {testing ? "Testing…" : t("rulesPage.testAgainstRecentEvents")}
             </Button>
             <Button type="button" onClick={close}>
-              Cancel
+              {t("rulesPage.cancel")}
             </Button>
             <Button type="submit" variant="primary" disabled={!editing?.source.trim()}>
-              Save rule
+              {t("rulesPage.saveRule")}
             </Button>
           </>
         }
       >
         <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Sigma rule</span>
+          <span className="font-medium">{t("rulesPage.sigmaRule")}</span>
           <textarea
             className="min-h-64 w-full rounded-md border border-line bg-subtle p-2 font-mono text-xs"
             spellCheck={false}
@@ -477,7 +475,7 @@ function RulesPage({ call, reload }: { call: Call; reload: () => void }) {
         {result && (
           <div className="flex flex-col gap-1 text-sm">
             <span>
-              Would have matched {plural(result.matches, "event")} of the newest {result.evaluated}, on {plural(result.hosts, "host")}.
+              {t("rulesPage.wouldHaveMatched")}{" "}{t("plurals.event", { count: result.matches })} {t("rulesPage.ofTheNewest")}{" "}{result.evaluated}{t("rulesPage.on2")}{" "}{t("plurals.host", { count: result.hosts })}.
             </span>
             <ul className="siem-list flex flex-col gap-1.5">
               {result.events.map((e) => (
@@ -494,6 +492,7 @@ function RulesPage({ call, reload }: { call: Call; reload: () => void }) {
 // ---------------------------------------------------------------- Events
 
 function EventsPage({ call }: { call: Call }) {
+  const t = useT();
   const [q, setQ] = useState("");
   const [host, setHost] = useState("");
   const [rows, setRows] = useState<Event[]>();
@@ -513,17 +512,17 @@ function EventsPage({ call }: { call: Call }) {
   const loadMore = () => more && query(more).then((r) => (setRows((x) => [...(x ?? []), ...r.events]), setMore(r.nextCursor)));
 
   const columns: Column<Event>[] = [
-    { id: "time", header: "Time", width: "180px", sortValue: (e) => e.time, cell: (e) => <span className="text-xs whitespace-nowrap">{new Date(e.time).toLocaleString()}</span> },
-    { id: "host", header: "Host", cell: (e) => <span className="font-mono text-xs">{e.host ?? "–"}</span> },
-    { id: "source", header: "Source", cell: (e) => e.source ?? "–" },
-    { id: "message", header: "Message", width: "48%", cell: (e) => <span className="siem-clamp text-xs">{e.message ?? ""}</span> },
+    { id: "time", header: t("eventsPage.time"), width: "180px", sortValue: (e) => e.time, cell: (e) => <span className="text-xs whitespace-nowrap">{new Date(e.time).toLocaleString()}</span> },
+    { id: "host", header: t("eventsPage.host"), cell: (e) => <span className="font-mono text-xs">{e.host ?? "–"}</span> },
+    { id: "source", header: t("eventsPage.source"), cell: (e) => e.source ?? "–" },
+    { id: "message", header: t("eventsPage.message"), width: "48%", cell: (e) => <span className="siem-clamp text-xs">{e.message ?? ""}</span> },
   ];
   return (
     <>
-      <PageHeader title="Events" description="What arrived, newest first. Search finds text in the message and in every field." />
+      <PageHeader title={t("eventsPage.events")} description={t("eventsPage.whatArrivedNewestFirstSearch")} />
       <FilterBar onClear={() => (setQ(""), setHost(""))}>
-        <SearchInput label="Search" className="w-72" value={q} onChange={(e) => setQ(e.target.value)} />
-        <SearchInput label="Host" className="w-56" value={host} onChange={(e) => setHost(e.target.value)} />
+        <SearchInput label={t("eventsPage.search")} className="w-72" value={q} onChange={(e) => setQ(e.target.value)} />
+        <SearchInput label={t("eventsPage.host")} className="w-56" value={host} onChange={(e) => setHost(e.target.value)} />
       </FilterBar>
       <div className={open ? "grid gap-2.5 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]" : "grid gap-2.5"}>
         <Panel
@@ -531,13 +530,13 @@ function EventsPage({ call }: { call: Call }) {
           footer={
             more ? (
               <Button size="sm" onClick={loadMore}>
-                Load more
+                {t("eventsPage.loadMore")}
               </Button>
             ) : undefined
           }
         >
           <DataTable
-            label="Events"
+            label={t("eventsPage.events")}
             columns={columns}
             rows={rows ?? []}
             loading={!rows}
@@ -547,18 +546,18 @@ function EventsPage({ call }: { call: Call }) {
             minWidth={760}
             pageSize={50}
             empty={
-              <EmptyState title="No events">
-                Nothing matches, or nothing has arrived. See <a href="/setup">Setup</a>.
+              <EmptyState title={t("eventsPage.noEvents")}>
+                {t("eventsPage.nothingMatchesOrNothingHas")}{" "}<a href="/setup">{t("eventsPage.setup")}</a>.
               </EmptyState>
             }
           />
         </Panel>
         {open && (
           <Panel
-            aria-label="Event details"
-            title={`Event ${open.id}`}
+            aria-label={t("eventsPage.eventDetails")}
+            title={t("eventsPage.event", { id: open.id })}
             actions={
-              <IconButton label="Close details" size="sm" onClick={() => setOpen(null)}>
+              <IconButton label={t("eventsPage.closeDetails")} size="sm" onClick={() => setOpen(null)}>
                 <X />
               </IconButton>
             }
@@ -576,22 +575,23 @@ function EventsPage({ call }: { call: Call }) {
 // ---------------------------------------------------------------- Setup
 
 function SetupPage() {
+  const t = useT();
   const origin = window.location.origin;
   return (
     <>
-      <PageHeader title="Setup" description="Send events, add Sigma rules, and work the signals they raise." />
-      <Panel title="Send events" description="Use SIEM_INGEST_TOKEN, set where siem runs, or an API token with the editor role from API tokens. One event or an array of up to 1000; events are flat JSON.">
+      <PageHeader title={t("setupPage.setup")} description={t("setupPage.sendEventsAddSigmaRules")} />
+      <Panel title={t("setupPage.sendEvents")} description={t("setupPage.useSiemIngestTokenSet")}>
         <Code>{`curl -sf -X POST -H "Authorization: Bearer $SIEM_INGEST_TOKEN" -H 'content-type: application/json' \\
   -d '{"host":"web-1","source":"sshd","message":"Failed password for root from 10.0.0.9"}' \\
   ${origin}/api/v1/events`}</Code>
       </Panel>
-      <Panel title="Add a rule" description="Rules are Sigma, as YAML or JSON. Test one against recent events before it goes live.">
+      <Panel title={t("setupPage.addARule")} description={t("setupPage.rulesAreSigmaAsYaml")}>
         <Code>{EXAMPLE}</Code>
         <ul className="siem-list mt-2 flex flex-col gap-1 text-sm text-fg-muted">
-          <li>Fields take contains, startswith, endswith, re and all; a list of values means any of them.</li>
-          <li>Conditions use and, or, not, parentheses and 1 of, any of, all of over names, patterns and them.</li>
-          <li>One rule on one host within an hour is one signal, with a count and the first events.</li>
-          <li>Aggregations (| count()) and timeframes are refused with a message, not ignored.</li>
+          <li>{t("setupPage.fieldsTakeContainsStartswithEndswith")}</li>
+          <li>{t("setupPage.conditionsUseAndOrNot")}</li>
+          <li>{t("setupPage.oneRuleOnOneHost")}</li>
+          <li>{t("setupPage.aggregationsCountAndTimeframesAre")}</li>
         </ul>
       </Panel>
     </>
@@ -600,9 +600,10 @@ function SetupPage() {
 
 /** The first screen, until the first event arrives. The summary is polled, so it gives way by itself. */
 function WelcomePage() {
+  const t = useT();
   return (
     <>
-      <PageHeader title="Get started" description="Send events, then add rules." actions={<StatusBadge tone="info">Waiting for the first event</StatusBadge>} />
+      <PageHeader title={t("welcomePage.getStarted")} description={t("welcomePage.sendEventsThenAddRules")} actions={<StatusBadge tone="info">{t("welcomePage.waitingForTheFirstEvent")}</StatusBadge>} />
       <SetupPage />
     </>
   );
@@ -612,8 +613,9 @@ function WelcomePage() {
 
 /** Account, Members, Sign-in and API tokens: the screens come from @openasy/auth. */
 function SettingsPage({ page }: { page: "account" | "members" | "signin" | "tokens" }) {
+  const t = useT();
   const { signOut, can } = useAuth();
-  if (page !== "account" && !can("admin")) return <EmptyState title="Admins only">Ask an admin of this siem for access.</EmptyState>;
+  if (page !== "account" && !can("admin")) return <EmptyState title={t("settingsPage.adminsOnly")}>{t("settingsPage.askAnAdminOfThis")}</EmptyState>;
   const titles = {
     account: ["Account", "Your profile, password, two-step verification and where you are signed in."],
     members: ["Members", "Who can sign in to this siem, and with which role. Viewers see everything; editors also work signals and test rules; admins also add and change rules, and manage members and tokens."],
@@ -628,7 +630,7 @@ function SettingsPage({ page }: { page: "account" | "members" | "signin" | "toke
         actions={
           page === "account" && (
             <Button icon={<LogOut />} onClick={() => void signOut()}>
-              Sign out
+              {t("settingsPage.signOut")}
             </Button>
           )
         }
@@ -639,6 +641,7 @@ function SettingsPage({ page }: { page: "account" | "members" | "signin" | "toke
 }
 
 function Product() {
+  const msg = useT();
   const [theme, setTheme] = useThemePreference();
   const { me, can } = useAuth();
   const route = parseRoute(usePath());
@@ -662,20 +665,20 @@ function Product() {
   }, [reload]);
 
   const nav = [
-    { id: "signals", label: "Signals", icon: Bell, count: summary ? Object.values(summary.open).reduce((a, b) => a + b, 0) : undefined },
-    { id: "rules", label: "Rules", icon: ShieldCheck, count: summary?.rules.total },
-    { id: "events", label: "Events", icon: ScrollText },
+    { id: "signals", label: msg("product.signals"), icon: Bell, count: summary ? Object.values(summary.open).reduce((a, b) => a + b, 0) : undefined },
+    { id: "rules", label: msg("product.rules"), icon: ShieldCheck, count: summary?.rules.total },
+    { id: "events", label: msg("product.events"), icon: ScrollText },
   ];
   const footerNav = [
-    { id: "setup", label: "Setup", icon: Settings2 },
+    { id: "setup", label: msg("product.setup"), icon: Settings2 },
     ...(can("admin")
       ? [
-          { id: "members", label: "Members", icon: Users },
-          { id: "signin", label: "Sign-in", icon: LogIn },
-          { id: "tokens", label: "API tokens", icon: KeyRound },
+          { id: "members", label: msg("product.members"), icon: Users },
+          { id: "signin", label: msg("product.signIn"), icon: LogIn },
+          { id: "tokens", label: msg("product.apiTokens"), icon: KeyRound },
         ]
       : []),
-    { id: "account", label: "Account", icon: UserRound },
+    { id: "account", label: msg("product.account"), icon: UserRound },
   ];
   const active = route.page;
   const roleName = me.user.role.charAt(0).toUpperCase() + me.user.role.slice(1);

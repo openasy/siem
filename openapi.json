@@ -1771,7 +1771,9 @@
           "eventsLastDay",
           "lastEventAt",
           "rules",
-          "open"
+          "open",
+          "hours",
+          "days"
         ],
         "additionalProperties": false,
         "properties": {
@@ -1836,6 +1838,70 @@
               }
             },
             "description": "Open signals (new or investigating) by severity."
+          },
+          "hours": {
+            "type": "array",
+            "description": "Events in each of the last 24 hours, by the time they happened, oldest first.",
+            "items": {
+              "type": "object",
+              "required": [
+                "start",
+                "events"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "start": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "The start of the hour, UTC."
+                },
+                "events": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "days": {
+            "type": "array",
+            "description": "Signals first seen on each of the last 14 days (UTC), by severity, oldest first.",
+            "items": {
+              "type": "object",
+              "required": [
+                "start",
+                "signals"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "start": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "signals": {
+                  "type": "object",
+                  "required": [
+                    "critical",
+                    "high",
+                    "medium",
+                    "low"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "critical": {
+                      "type": "integer"
+                    },
+                    "high": {
+                      "type": "integer"
+                    },
+                    "medium": {
+                      "type": "integer"
+                    },
+                    "low": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

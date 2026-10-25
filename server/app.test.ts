@@ -70,6 +70,18 @@ describe("events and signals", () => {
     expect(detail.events[0]).toMatchObject({ host: "web-1", source: "sshd" });
   });
 
+  it("counts events by hour and new signals by day and severity", async () => {
+    const s = await json(await app.admin("/api/v1/summary"));
+    expect(s.hours).toHaveLength(24);
+    expect(s.days).toHaveLength(14);
+    // The four events above happened in the last few minutes, so in this hour or the one before.
+    expect(s.hours.slice(-2).reduce((n: number, h: { events: number }) => n + h.events, 0)).toBeGreaterThanOrEqual(4);
+    expect(s.hours[23].start).toBe(new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000).toISOString());
+    const signals = (await json(await app.admin("/api/v1/signals"))).signals.length;
+    const counted = s.days.reduce((n: number, d: { signals: Record<string, number> }) => n + Object.values(d.signals).reduce((a, b) => a + b, 0), 0);
+    expect(counted).toBe(signals);
+  });
+
   it("keeps at most five sample events and starts a new signal after the window", async () => {
     await app.send(Array.from({ length: 6 }, (_, i) => ssh("web-3", 30 - i)));
     const web3 = (await json(await app.admin("/api/v1/signals?host=web-3"))).signals[0];

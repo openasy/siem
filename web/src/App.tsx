@@ -16,21 +16,27 @@ import {
   Panel,
   PRODUCT_IDS,
   SearchInput,
+  SEVERITY_META,
+  StackedBarChart,
   Switch,
   SeverityBadge,
   StatusBadge,
   Tabs,
   TextField,
+  TimeSeriesChart,
+  TONE_COLORS,
   usePath,
   type Column,
   type ProductId,
   useThemePreference,
   useAgo,
+  toLocale,
+  useLocalePreference,
 } from "@openasy/ui";
-import { AccountSettings, AuthGate, MembersSettings, SignInSettings, TokensSettings, useAuth, useInstallBrand } from "@openasy/auth/react";
+import { AccountSettings, AuthGate, MembersSettings, SignInSettings, TokensSettings, useAccountMenu, useAuth, useInstallBrand } from "@openasy/auth/react";
 import colophon from "virtual:openasy-colophon";
-import { Bell, FlaskConical, KeyRound, LogIn, LogOut, Plus, ScrollText, Settings2, ShieldCheck, Trash2, UserRound, Users, X } from "lucide-react";
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Bell, FlaskConical, KeyRound, LogIn, LogOut, Plus, ScrollText, ShieldCheck, Trash2, UserRound, Users, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   api,
   MfaSetupRequired,
@@ -46,6 +52,7 @@ import {
   type Summary,
 } from "./api.ts";
 import { useT, type T } from "./i18n.ts";
+import { search } from "./search.ts";
 
 const PAGES = ["rules", "events", "setup", "account", "members", "signin", "tokens", "about"] as const;
 type Route = { page: "signals" | (typeof PAGES)[number] };
@@ -159,7 +166,7 @@ function SignalPanel({ id, call, onClose, onChanged }: { id: string; call: Call;
       }
     >
       {!signal ? (
-        <p className="text-sm text-fg-muted">Loading…</p>
+        <p className="text-sm text-fg-muted">{t("common.loading")}</p>
       ) : (
         <div className="flex flex-col gap-3 text-sm">
           <div className="flex flex-wrap items-center gap-1.5">
@@ -243,7 +250,8 @@ function SignalsPage({ call, summary, reload }: { call: Call; summary?: Summary;
   const t = useT();
   const [tab, setTab] = useState<Tab>("open");
   const [sev, setSev] = useState<string[]>([]);
-  const [host, setHost] = useState("");
+  // The search window opens this page at a host with ?host=.
+  const [host, setHost] = useState(() => new URLSearchParams(location.search).get("host") ?? "");
   const [rows, setRows] = useState<Signal[]>();
   const [more, setMore] = useState<string>();
   const [open, setOpen] = useState<Signal | null>(null);
@@ -305,6 +313,31 @@ function SignalsPage({ call, summary, reload }: { call: Call; summary?: Summary;
           <KpiCard label={t("signalsPage.events24Hours")} value={s.eventsLastDay} tone="info" />
           <KpiCard label={t("signalsPage.rulesWithAnError")} value={s.rules.failing} tone={s.rules.failing ? "warning" : "success"} />
         </KpiGrid>
+      )}
+      {s && (
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Panel title={t("signalsPage.eventsOverTime")} description={t("signalsPage.eachHourOfTheLast")}>
+            <TimeSeriesChart
+              label={t("signalsPage.eventsInEachHour")}
+              series={[{ id: "events", name: t("signalsPage.events"), data: s.hours.map((h) => h.events) }]}
+              labels={s.hours.map((h) => new Date(h.start).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false }))}
+              height={140}
+              xTicks={6}
+            />
+          </Panel>
+          <Panel title={t("signalsPage.newSignals")} description={t("signalsPage.eachDayOfTheLast")}>
+            <StackedBarChart
+              label={t("signalsPage.newSignalsEachDayBy")}
+              categories={s.days.map((d) =>
+                new Date(`${d.start}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }),
+              )}
+              segments={[...LEVELS].reverse().map((l) => ({ id: l, name: SEVERITY_META[l].label, color: TONE_COLORS[SEVERITY_META[l].tone] }))}
+              values={s.days.map((d) => [...LEVELS].reverse().map((l) => d.signals[l]))}
+              height={140}
+              xTicks={7}
+            />
+          </Panel>
+        </div>
       )}
       <Tabs<Tab>
         label={t("signalsPage.signalViews")}
@@ -571,7 +604,8 @@ function RulesPage({ call, reload }: { call: Call; reload: () => void }) {
 
 function EventsPage({ call }: { call: Call }) {
   const t = useT();
-  const [q, setQ] = useState("");
+  // The search window opens this page at a text with ?q=.
+  const [q, setQ] = useState(() => new URLSearchParams(location.search).get("q") ?? "");
   const [host, setHost] = useState("");
   const [rows, setRows] = useState<Event[]>();
   const [more, setMore] = useState<string>();
@@ -744,11 +778,14 @@ function SettingsPage({ page }: { page: "account" | "members" | "signin" | "toke
 function Product() {
   const msg = useT();
   const [theme, setTheme] = useThemePreference();
+  const [, setLocale] = useLocalePreference();
   const { me, can } = useAuth();
+  const account = useAccountMenu();
   const route = parseRoute(usePath());
   const [summary, setSummary] = useState<Summary>();
   const [products, setProducts] = useState<Array<ProductLink & { id: ProductId }>>([]);
   const call = useApi();
+  const onSearch = useMemo(() => search(call, msg), [call, msg]);
 
   // The install's other products (OPENASY_PRODUCTS), for the switcher; ids this UI does not know are left out.
   useEffect(() => {
@@ -771,7 +808,6 @@ function Product() {
     { id: "events", label: msg("product.events"), icon: ScrollText },
   ];
   const footerNav = [
-    { id: "setup", label: msg("product.setup"), icon: Settings2 },
     ...(can("admin")
       ? [
           { id: "members", label: msg("product.members"), icon: Users },
@@ -787,6 +823,7 @@ function Product() {
   return (
     <AppShell
       product="siem"
+      onSearch={onSearch}
       about={colophon}
       nav={nav}
       activeNav={active}
@@ -796,19 +833,21 @@ function Product() {
         const to = products.find((p) => p.id === id);
         if (to) window.location.assign(to.url);
       }}
-      footerNav={footerNav}
-      user={{ name: me.user.name, role: roleName }}
+      footerNav={account.settings(footerNav)}
+      setup
+      user={{ name: me.user.name, role: roleName, ...account.user }}
       theme={theme}
       onThemeChange={setTheme}
+      onLanguageChange={(code) => setLocale(toLocale(code))}
     >
       {route.page === "signals" && summary && summary.events === 0 ? (
         <WelcomePage />
       ) : route.page === "signals" ? (
-        <SignalsPage call={call} summary={summary} reload={reload} />
+        <SignalsPage key={location.search} call={call} summary={summary} reload={reload} />
       ) : route.page === "rules" ? (
         <RulesPage call={call} reload={reload} />
       ) : route.page === "events" ? (
-        <EventsPage call={call} />
+        <EventsPage key={location.search} call={call} />
       ) : route.page === "account" || route.page === "members" || route.page === "signin" || route.page === "tokens" ? (
         <SettingsPage page={route.page} />
       ) : (
@@ -821,9 +860,10 @@ function Product() {
 export function App() {
   const installBrand = useInstallBrand();
   const [theme] = useThemePreference();
+  const [locale] = useLocalePreference();
   return (
     // The install's brand from config/brand.env (ADR 0053); OpenAsy's own look where it sets none.
-    <BrandProvider theme={theme} brand={{ name: "OpenAsy", organization: undefined, ...installBrand }} className="min-h-screen">
+    <BrandProvider theme={theme} locale={locale} brand={{ name: "OpenAsy", organization: undefined, ...installBrand }} className="min-h-screen">
       <AuthGate product="OpenAsy SIEM">
         <Product />
       </AuthGate>

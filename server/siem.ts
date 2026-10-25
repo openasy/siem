@@ -457,6 +457,8 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
         lastEventAt: (db.prepare("SELECT MAX(time) AS t FROM events").get() as { t: string | null }).t,
         rules: { total: rules.total, enabled: rules.enabled, failing: rules.failing },
         open,
+        hours: hourly(db),
+        days: daily(db),
       };
     },
 
@@ -469,3 +471,42 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
 }
 
 export type Siem = ReturnType<typeof createSiem>;
+
+const HOUR = 3_600_000;
+const DAY = 86_400_000;
+
+/** The starts of the last n periods of `size` milliseconds, UTC, the current one last. */
+export function periodStarts(n: number, size: number, now = Date.now()): string[] {
+  const current = Math.floor(now / size) * size;
+  return Array.from({ length: n }, (_, i) => new Date(current - (n - 1 - i) * size).toISOString());
+}
+
+/** Events in each of the last 24 hours, by the time they happened, oldest first. */
+function hourly(db: DatabaseSync) {
+  const hours = periodStarts(24, HOUR).map((start) => ({ start, events: 0 }));
+  const at = new Map(hours.map((h) => [h.start.slice(0, 13), h]));
+  for (const r of db.prepare("SELECT substr(time, 1, 13) AS h, COUNT(*) AS n FROM events WHERE time >= ? GROUP BY h").all(hours[0]!.start) as Array<{
+    h: string;
+    n: number;
+  }>) {
+    const h = at.get(r.h);
+    if (h) h.events = r.n;
+  }
+  return hours;
+}
+
+/** Signals first seen on each of the last 14 days, by severity, oldest first. */
+function daily(db: DatabaseSync) {
+  const days = periodStarts(14, DAY).map((start) => ({
+    start: start.slice(0, 10),
+    signals: { critical: 0, high: 0, medium: 0, low: 0 } as Record<Level, number>,
+  }));
+  const at = new Map(days.map((d) => [d.start, d]));
+  for (const r of db
+    .prepare("SELECT substr(first_seen, 1, 10) AS d, severity, COUNT(*) AS n FROM signals WHERE first_seen >= ? GROUP BY d, severity")
+    .all(days[0]!.start) as Array<{ d: string; severity: Level; n: number }>) {
+    const d = at.get(r.d);
+    if (d) d.signals[r.severity] = r.n;
+  }
+  return days;
+}

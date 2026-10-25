@@ -15,6 +15,10 @@ export interface Summary {
   lastEventAt: string | null;
   rules: { total: number; enabled: number; failing: number };
   open: Record<Level, number>;
+  /** Events in each of the last 24 hours, by when they happened, oldest first. */
+  hours: Array<{ start: string; events: number }>;
+  /** Signals first seen on each of the last 14 days (UTC), by severity, oldest first. */
+  days: Array<{ start: string; signals: Record<Level, number> }>;
 }
 
 export interface Event {

@@ -30,6 +30,12 @@
     "signals": "Signals",
     "keptLastEventOn": "{{plural}} kept · last event {{ago}} · {{plural2}} on",
     "events24Hours": "Events, 24 hours",
+    "eventsOverTime": "Events over time",
+    "eachHourOfTheLast": "Each hour of the last 24, by when the event happened.",
+    "eventsInEachHour": "Events in each hour of the last 24",
+    "newSignals": "New signals",
+    "eachDayOfTheLast": "Each day of the last 14, by severity.",
+    "newSignalsEachDayBy": "New signals each day of the last 14, by severity",
     "rulesWithAnError": "Rules with an error",
     "signalViews": "Signal views",
     "open": "Open",
@@ -130,5 +136,17 @@
     "rule_other": "{{count}} rules",
     "host_one": "{{count}} host",
     "host_other": "{{count}} hosts"
+  },
+  "search": {
+    "eventsWith": "Events with “{{text}}”",
+    "events": "Events",
+    "signal": "Signal",
+    "signalDetail": "{{host}} · {{count}} events",
+    "rule": "Rule",
+    "ruleDetail": "{{matches}} matches",
+    "disabled": "Disabled"
+  },
+  "common": {
+    "loading": "Loading…"
   }
 }

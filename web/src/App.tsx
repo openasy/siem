@@ -26,16 +26,41 @@ import {
   TimeSeriesChart,
   TONE_COLORS,
   usePath,
-  type Column,
-  type ProductId,
   useThemePreference,
   useAgo,
   toLocale,
   useLocalePreference,
+  BarList,
+  DonutChart,
+  OverviewGrid,
+  type Column,
+  type ProductId,
 } from "@openasy/ui";
 import { AccountSettings, AuthGate, MembersSettings, SignInSettings, TokensSettings, useAccountMenu, useAuth, useInstallBrand } from "@openasy/auth/react";
 import colophon from "virtual:openasy-colophon";
-import { Bell, Bot, FlaskConical, KeyRound, LogIn, LogOut, Plus, ScrollText, Server, ShieldCheck, Trash2, UserRound, Users, X } from "lucide-react";
+import {
+  Activity,
+  Bell,
+  Bot,
+  CircleAlert,
+  CircleX,
+  FlaskConical,
+  Info,
+  KeyRound,
+  LayoutDashboard,
+  LogIn,
+  LogOut,
+  Plus,
+  ScrollText,
+  Server,
+  ShieldAlert,
+  ShieldCheck,
+  Trash2,
+  TriangleAlert,
+  UserRound,
+  Users,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   api,
@@ -43,6 +68,7 @@ import {
   Unauthorized,
   type Event,
   type Level,
+  type Overview,
   type ProductLink,
   type Rule,
   type RuleTest,
@@ -56,13 +82,14 @@ import { useT, type T } from "./i18n.ts";
 import { search } from "./search.ts";
 
 const PAGES = ["rules", "events", "hosts", "agents", "setup", "account", "members", "signin", "tokens", "about"] as const;
-type Route = { page: "signals" | (typeof PAGES)[number] };
+type Route = { page: "overview" | "signals" | (typeof PAGES)[number] };
 /** The first path segments that are pages of this UI, for followLinks. */
-export const PATHS = ["signals", ...PAGES];
+export const PATHS = ["overview", "signals", ...PAGES];
 function parseRoute(path: string): Route {
   const [page] = path.replace(/^\//, "").split("/");
   if ((PAGES as readonly string[]).includes(page ?? "")) return { page: page as (typeof PAGES)[number] };
-  return { page: "signals" };
+  if (page === "signals") return { page: "signals" };
+  return { page: "overview" };
 }
 
 /** Data loading with the session; when it ends, the sign-in screen comes back. */
@@ -85,9 +112,9 @@ export type Call = ReturnType<typeof useApi>;
 
 const LEVELS: Level[] = ["critical", "high", "medium", "low"];
 const STATUS_LABEL = (t: T): Record<Status, string> => ({
-  new: "New",
-  investigating: "Investigating",
-  closed: "Closed",
+  new: t("statusLabel.new"),
+  investigating: t("statusLabel.investigating"),
+  closed: t("statusLabel.closed"),
   "false-positive": t("statusLabel.falsePositive"),
 });
 
@@ -267,6 +294,147 @@ function SignalPanel({ id, call, onClose, onChanged }: { id: string; call: Call;
 
 type Tab = "open" | "closed" | "false-positive";
 
+function OverviewPage({ call, summary }: { call: Call; summary?: Summary }) {
+  const ago = useAgo();
+  const t = useT();
+  const [o, setO] = useState<Overview>();
+  useEffect(() => void call<Overview>("/api/v1/overview").then(setO, () => {}), [call, summary]);
+  const s = summary;
+  const color = (l: Level) => TONE_COLORS[SEVERITY_META[l].tone];
+  const icon = { critical: ShieldAlert, high: TriangleAlert, medium: CircleAlert, low: Info };
+  return (
+    <>
+      <PageHeader
+        title={t("overviewPage.overview")}
+        description={
+          s
+            ? t("signalsPage.keptLastEventOn", {
+                plural: t("plurals.event", { count: s.events }),
+                ago: ago(s.lastEventAt),
+                plural2: t("plurals.rule", { count: s.rules.enabled }),
+              })
+            : undefined
+        }
+      />
+      {s && (
+        <KpiGrid minWidth={150}>
+          {LEVELS.map((l) => (
+            <KpiCard
+              key={l}
+              label={SEVERITY_META[l].label}
+              value={s.open[l]}
+              icon={icon[l]}
+              tone={s.open[l] && (l === "critical" || l === "high") ? SEVERITY_META[l].tone : undefined}
+              trend={s.days.map((d) => d.signals[l])}
+              trendColor={color(l)}
+              href="/signals"
+            />
+          ))}
+          <KpiCard
+            label={t("signalsPage.events24Hours")}
+            value={s.eventsLastDay}
+            icon={Activity}
+            tone="info"
+            trend={s.hours.map((h) => h.events)}
+            href="/events"
+          />
+          <KpiCard
+            label={t("signalsPage.rulesWithAnError")}
+            value={s.rules.failing}
+            icon={CircleX}
+            tone={s.rules.failing ? "warning" : "success"}
+            href="/rules"
+          />
+        </KpiGrid>
+      )}
+      {s && (
+        <OverviewGrid>
+          <Panel title={t("signalsPage.eventsOverTime")} description={t("signalsPage.eachHourOfTheLast")}>
+            <TimeSeriesChart
+              label={t("signalsPage.eventsInEachHour")}
+              series={[{ id: "events", name: t("signalsPage.events"), data: s.hours.map((h) => h.events) }]}
+              labels={s.hours.map((h) => new Date(h.start).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false }))}
+              height={190}
+              xTicks={6}
+            />
+          </Panel>
+          <Panel title={t("overviewPage.openBySeverity")} description={t("overviewPage.openBySeverityDetail")}>
+            <DonutChart
+              label={t("overviewPage.openBySeverity")}
+              caption={t("overviewPage.open")}
+              slices={LEVELS.map((l) => ({ id: l, name: SEVERITY_META[l].label, value: s.open[l], color: color(l), href: "/signals" }))}
+            />
+          </Panel>
+        </OverviewGrid>
+      )}
+      {s && o && (
+        <OverviewGrid>
+          <Panel title={t("signalsPage.newSignals")} description={t("signalsPage.eachDayOfTheLast")}>
+            <StackedBarChart
+              label={t("signalsPage.newSignalsEachDayBy")}
+              categories={s.days.map((d) =>
+                new Date(`${d.start}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }),
+              )}
+              segments={[...LEVELS].reverse().map((l) => ({ id: l, name: SEVERITY_META[l].label, color: color(l) }))}
+              values={s.days.map((d) => [...LEVELS].reverse().map((l) => d.signals[l]))}
+              height={190}
+              xTicks={7}
+            />
+          </Panel>
+          <Panel title={t("overviewPage.byStatus")} description={t("overviewPage.byStatusDetail")}>
+            <DonutChart
+              label={t("overviewPage.byStatus")}
+              caption={t("overviewPage.signals")}
+              slices={[
+                { id: "new", name: STATUS_LABEL(t).new, value: o.byStatus.new, color: TONE_COLORS.danger },
+                { id: "investigating", name: STATUS_LABEL(t).investigating, value: o.byStatus.investigating, color: TONE_COLORS.warning },
+                { id: "closed", name: STATUS_LABEL(t).closed, value: o.byStatus.closed, color: TONE_COLORS.success },
+                { id: "false-positive", name: STATUS_LABEL(t)["false-positive"], value: o.byStatus["false-positive"], color: TONE_COLORS.neutral },
+              ]}
+            />
+          </Panel>
+        </OverviewGrid>
+      )}
+      {o && (
+        <OverviewGrid layout="halves">
+          <Panel title={t("overviewPage.topRules")} description={t("overviewPage.topRulesDetail")}>
+            {o.topRules.length ? (
+              <BarList
+                label={t("overviewPage.topRules")}
+                items={o.topRules.map((x) => ({
+                  id: x.rule ?? x.title,
+                  label: <span title={x.title}>{x.title}</span>,
+                  value: x.open,
+                  color: color(x.severity),
+                  href: "/rules",
+                }))}
+              />
+            ) : (
+              <EmptyState title={t("overviewPage.nothingOpen")} />
+            )}
+          </Panel>
+          <Panel title={t("overviewPage.topHosts")} description={t("overviewPage.topHostsDetail")}>
+            {o.topHosts.length ? (
+              <BarList
+                label={t("overviewPage.topHosts")}
+                items={o.topHosts.map((x) => ({
+                  id: x.host,
+                  label: <span title={x.host}>{x.host}</span>,
+                  value: x.open,
+                  color: color(x.severity),
+                  href: `/signals?host=${encodeURIComponent(x.host)}`,
+                }))}
+              />
+            ) : (
+              <EmptyState title={t("overviewPage.nothingOpen")} />
+            )}
+          </Panel>
+        </OverviewGrid>
+      )}
+    </>
+  );
+}
+
 function SignalsPage({ call, summary, reload }: { call: Call; summary?: Summary; reload: () => void }) {
   const ago = useAgo();
   const t = useT();
@@ -328,40 +496,6 @@ function SignalsPage({ call, summary, reload }: { call: Call; summary?: Summary;
             : undefined
         }
       />
-      {s && (
-        <KpiGrid minWidth={150}>
-          {LEVELS.map((l) => (
-            <KpiCard key={l} label={l.charAt(0).toUpperCase() + l.slice(1)} value={s.open[l]} footer={<SeverityBadge severity={l} />} />
-          ))}
-          <KpiCard label={t("signalsPage.events24Hours")} value={s.eventsLastDay} tone="info" />
-          <KpiCard label={t("signalsPage.rulesWithAnError")} value={s.rules.failing} tone={s.rules.failing ? "warning" : "success"} />
-        </KpiGrid>
-      )}
-      {s && (
-        <div className="grid gap-3 lg:grid-cols-2">
-          <Panel title={t("signalsPage.eventsOverTime")} description={t("signalsPage.eachHourOfTheLast")}>
-            <TimeSeriesChart
-              label={t("signalsPage.eventsInEachHour")}
-              series={[{ id: "events", name: t("signalsPage.events"), data: s.hours.map((h) => h.events) }]}
-              labels={s.hours.map((h) => new Date(h.start).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false }))}
-              height={140}
-              xTicks={6}
-            />
-          </Panel>
-          <Panel title={t("signalsPage.newSignals")} description={t("signalsPage.eachDayOfTheLast")}>
-            <StackedBarChart
-              label={t("signalsPage.newSignalsEachDayBy")}
-              categories={s.days.map((d) =>
-                new Date(`${d.start}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }),
-              )}
-              segments={[...LEVELS].reverse().map((l) => ({ id: l, name: SEVERITY_META[l].label, color: TONE_COLORS[SEVERITY_META[l].tone] }))}
-              values={s.days.map((d) => [...LEVELS].reverse().map((l) => d.signals[l]))}
-              height={140}
-              xTicks={7}
-            />
-          </Panel>
-        </div>
-      )}
       <Tabs<Tab>
         label={t("signalsPage.signalViews")}
         value={tab}
@@ -835,6 +969,7 @@ function Product() {
   }, [reload]);
 
   const nav = [
+    { id: "overview", label: msg("product.overview"), icon: LayoutDashboard },
     { id: "signals", label: msg("product.signals"), icon: Bell, count: summary ? Object.values(summary.open).reduce((a, b) => a + b, 0) : undefined },
     { id: "rules", label: msg("product.rules"), icon: ShieldCheck, count: summary?.rules.total },
     { id: "events", label: msg("product.events"), icon: ScrollText },
@@ -874,8 +1009,10 @@ function Product() {
       onThemeChange={setTheme}
       onLanguageChange={(code) => setLocale(toLocale(code))}
     >
-      {route.page === "signals" && summary && summary.events === 0 ? (
+      {(route.page === "overview" || route.page === "signals") && summary && summary.events === 0 ? (
         <WelcomePage />
+      ) : route.page === "overview" ? (
+        <OverviewPage call={call} summary={summary} />
       ) : route.page === "signals" ? (
         <SignalsPage key={location.search} call={call} summary={summary} reload={reload} />
       ) : route.page === "rules" ? (

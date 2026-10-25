@@ -168,6 +168,7 @@ describe("responses match openapi.json", () => {
     await call("PATCH", "/api/v1/signals/{id}", admin({ status: "closed" }), "/api/v1/signals/missing");
     await call("PATCH", "/api/v1/signals/{id}", { method: "PATCH" }, `/api/v1/signals/${signal}`);
     await call("GET", "/api/v1/summary", admin());
+    await call("GET", "/api/v1/overview", admin());
     await call("GET", "/api/v1/summary", {});
   });
 

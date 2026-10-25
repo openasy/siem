@@ -282,3 +282,20 @@ describe("access", () => {
     expect(metrics).toContain('openasy_siem_rules{state="enabled"}');
   });
 });
+
+describe("the overview", () => {
+  let own: Awaited<ReturnType<typeof startApp>>;
+  beforeAll(async () => {
+    own = await startApp({ version: "0.1.0" });
+  });
+  afterAll(() => own.close());
+
+  it("counts signals of 30 days by status and ranks rules and hosts", async () => {
+    await own.addRule(FAILED_LOGIN);
+    await own.send([ssh("web-1", 3), ssh("web-1", 2), ssh("web-2", 1)]);
+    const o = await json(await own.admin("/api/v1/overview"));
+    expect(o.byStatus).toEqual({ new: 2, investigating: 0, closed: 0, "false-positive": 0 });
+    expect(o.topRules).toEqual([{ rule: expect.any(String), title: "Failed login", open: 2, severity: "medium" }]);
+    expect(o.topHosts.map((h: { host: string }) => h.host).sort()).toEqual(["web-1", "web-2"]);
+  });
+});

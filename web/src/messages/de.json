@@ -1,4 +1,18 @@
 {
+  "overviewPage": {
+    "overview": "Übersicht",
+    "openBySeverity": "Offen nach Schweregrad",
+    "openBySeverityDetail": "Signale, die jetzt neu sind oder untersucht werden.",
+    "open": "offen",
+    "byStatus": "Signale von 30 Tagen",
+    "byStatusDetail": "In den letzten 30 Tagen zuerst gesehene Signale, nach Stand.",
+    "signals": "Signale",
+    "topRules": "Regeln mit den meisten offenen",
+    "topRulesDetail": "Schlimmster Schweregrad, dann die meisten offenen Signale zuerst.",
+    "topHosts": "Hosts mit den meisten offenen",
+    "topHostsDetail": "Offene Signale auf jedem Host; öffnen Sie einen, um sie zu sehen.",
+    "nothingOpen": "Nichts offen"
+  },
   "signalPanel": {
     "signalDetails": "Signaldetails",
     "signal": "Signal",
@@ -124,6 +138,7 @@
     "signOut": "Abmelden"
   },
   "product": {
+    "overview": "Übersicht",
     "signals": "Signale",
     "rules": "Regeln",
     "events": "Ereignisse",
@@ -136,6 +151,9 @@
     "agents": "Agents"
   },
   "statusLabel": {
+    "new": "Neu",
+    "investigating": "In Untersuchung",
+    "closed": "Geschlossen",
     "falsePositive": "Fehlalarm"
   },
   "plurals": {

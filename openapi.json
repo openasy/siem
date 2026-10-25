@@ -936,6 +936,49 @@
         "x-openasy-role": "viewer"
       }
     },
+    "/api/v1/overview": {
+      "get": {
+        "operationId": "getOverview",
+        "tags": [
+          "Product"
+        ],
+        "summary": "What the overview draws",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          },
+          {
+            "adminToken": []
+          }
+        ],
+        "description": "Signals first seen in the last 30 days by status, and the rules and hosts with the most open signals, worst severity first.\n\nNeeds the viewer role.",
+        "responses": {
+          "200": {
+            "description": "What the overview draws.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Overview"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "x-openasy-role": "viewer"
+      }
+    },
     "/api/v1/version": {
       "get": {
         "operationId": "getVersion",
@@ -3353,6 +3396,110 @@
             "items": {
               "type": "object"
             }
+          }
+        }
+      },
+      "Overview": {
+        "type": "object",
+        "required": [
+          "byStatus",
+          "topRules",
+          "topHosts"
+        ],
+        "properties": {
+          "byStatus": {
+            "type": "object",
+            "required": [
+              "new",
+              "investigating",
+              "closed",
+              "false-positive"
+            ],
+            "properties": {
+              "new": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "investigating": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "closed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "false-positive": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "topRules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "rule",
+                "title",
+                "open",
+                "severity"
+              ],
+              "properties": {
+                "rule": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "open": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "critical",
+                    "high",
+                    "medium",
+                    "low"
+                  ]
+                }
+              }
+            },
+            "description": "Eight at most."
+          },
+          "topHosts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "host",
+                "open",
+                "severity"
+              ],
+              "properties": {
+                "host": {
+                  "type": "string"
+                },
+                "open": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "critical",
+                    "high",
+                    "medium",
+                    "low"
+                  ]
+                }
+              }
+            },
+            "description": "Eight at most."
           }
         }
       }

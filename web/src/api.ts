@@ -157,3 +157,11 @@ export interface HostsFile {
   error: string | null;
   warnings: string[];
 }
+
+/** What the overview draws besides the summary (GET /api/v1/overview). */
+export interface Overview {
+  /** Signals first seen in the last 30 days, by status. */
+  byStatus: Record<Status, number>;
+  topRules: Array<{ rule: string | null; title: string; open: number; severity: Level }>;
+  topHosts: Array<{ host: string; open: number; severity: Level }>;
+}

@@ -1,4 +1,18 @@
 {
+  "overviewPage": {
+    "overview": "Overview",
+    "openBySeverity": "Open by severity",
+    "openBySeverityDetail": "Signals new or being investigated now.",
+    "open": "open",
+    "byStatus": "Signals of 30 days",
+    "byStatusDetail": "Signals first seen in the last 30 days, by where they stand.",
+    "signals": "signals",
+    "topRules": "Rules with the most open",
+    "topRulesDetail": "Worst severity, then most open signals first.",
+    "topHosts": "Hosts with the most open",
+    "topHostsDetail": "Open signals on each host; open one to see them.",
+    "nothingOpen": "Nothing open"
+  },
   "signalPanel": {
     "signalDetails": "Signal details",
     "signal": "Signal",
@@ -124,6 +138,7 @@
     "signOut": "Sign out"
   },
   "product": {
+    "overview": "Overview",
     "signals": "Signals",
     "rules": "Rules",
     "events": "Events",
@@ -136,6 +151,9 @@
     "agents": "Agents"
   },
   "statusLabel": {
+    "new": "New",
+    "investigating": "Investigating",
+    "closed": "Closed",
     "falsePositive": "False positive"
   },
   "plurals": {

@@ -638,6 +638,30 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
       };
     },
 
+    /** What the overview draws besides the summary: signals of the last 30 days by status, and the rules and hosts with the most open. */
+    overview() {
+      const since = new Date(Date.now() - 30 * DAY).toISOString();
+      const byStatus = { new: 0, investigating: 0, closed: 0, "false-positive": 0 };
+      for (const r of db.prepare("SELECT status, COUNT(*) AS n FROM signals WHERE first_seen >= ? GROUP BY status").all(since) as Array<{
+        status: keyof typeof byStatus;
+        n: number;
+      }>)
+        byStatus[r.status] = r.n;
+      const top = (col: "rule_title" | "host") =>
+        db
+          .prepare(
+            `SELECT ${col} AS name, MAX(rule_id) AS rule, COUNT(*) AS n, MAX(CASE severity WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END) AS rank
+             FROM signals WHERE status IN ('new', 'investigating') GROUP BY ${col} ORDER BY rank DESC, n DESC, ${col} LIMIT 8`,
+          )
+          .all() as Array<{ name: string; rule: string | null; n: number; rank: number }>;
+      const level = (rank: number) => (["low", "low", "medium", "high", "critical"] as const)[rank]!;
+      return {
+        byStatus,
+        topRules: top("rule_title").map((r) => ({ rule: r.rule, title: r.name, open: r.n, severity: level(r.rank) })),
+        topHosts: top("host").map((r) => ({ host: r.name, open: r.n, severity: level(r.rank) })),
+      };
+    },
+
     purge() {
       const before = new Date(Date.now() - retentionDays * 86_400_000).toISOString();
       db.prepare("DELETE FROM events WHERE time < ?").run(before);

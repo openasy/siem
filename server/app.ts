@@ -234,6 +234,7 @@ export function createApp({
     { method: "GET", path: "/api/v1/version", auth: "none", handle: () => ({ product: "siem", version }) },
     { method: "GET", path: "/api/v1/products", auth: "viewer", handle: () => ({ products }) },
     { method: "GET", path: "/api/v1/summary", auth: "viewer", handle: () => siem.summary() },
+    { method: "GET", path: "/api/v1/overview", auth: "viewer", handle: () => siem.overview() },
 
     // Events in, from log shippers, agents and scripts. A single event or an array.
     {

@@ -1,4 +1,18 @@
 {
+  "overviewPage": {
+    "overview": "Genel bakış",
+    "openBySeverity": "Öneme göre açık",
+    "openBySeverityDetail": "Şu an yeni ya da incelenen sinyaller.",
+    "open": "açık",
+    "byStatus": "30 günün sinyalleri",
+    "byStatusDetail": "Son 30 günde ilk kez görülen sinyaller, durumlarına göre.",
+    "signals": "sinyal",
+    "topRules": "En çok açığı olan kurallar",
+    "topRulesDetail": "En kötü önem, sonra en çok açık sinyal önce.",
+    "topHosts": "En çok açığı olan sunucular",
+    "topHostsDetail": "Her sunucudaki açık sinyaller; görmek için birini açın.",
+    "nothingOpen": "Açık bir şey yok"
+  },
   "signalPanel": {
     "signalDetails": "Sinyal ayrıntıları",
     "signal": "Sinyal",
@@ -124,6 +138,7 @@
     "signOut": "Çıkış yap"
   },
   "product": {
+    "overview": "Genel bakış",
     "signals": "Sinyaller",
     "rules": "Kurallar",
     "events": "Olaylar",
@@ -136,6 +151,9 @@
     "agents": "Ajanlar"
   },
   "statusLabel": {
+    "new": "Yeni",
+    "investigating": "İnceleniyor",
+    "closed": "Kapatıldı",
     "falsePositive": "Yanlış alarm"
   },
   "plurals": {

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
-import { compileRule, SigmaError, type Event, type Level, type Rule } from "./sigma.ts";
+import type { IncidentsLink } from "./incidents.ts";
+import { compileRule, fieldValue, fires, MAX_TIMESPAN_MS, SigmaError, type Event, type Hit, type Level, type Rule } from "./sigma.ts";
 
 export type ProblemCode =
   | "invalid-token"
@@ -117,7 +118,18 @@ export interface SiemOptions {
   windowMinutes?: number;
   /** Reads a rule's text. Tests replace it with one that fails, to show a failing rule does not stop ingest. */
   compile?: (source: string) => Rule;
+  /** Opens an incident in OpenAsy Incidents for each new signal this severe or more (ADR 0041). */
+  incidents?: {
+    link: IncidentsLink;
+    minSeverity: Level;
+    /** The signal's page in siem, linked from the incident. */
+    signalUrl: (id: string) => string;
+  };
 }
+
+/** A signal's incident is tried again while Incidents is unreachable, for a day at most. */
+const INCIDENT_TRIES_MS = 86_400_000;
+const RANK: Record<Level, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
 interface EventRow {
   id: number;
@@ -129,23 +141,65 @@ interface EventRow {
   received_at: string;
 }
 
-export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes = 60, compile: compileText = compileRule }: SiemOptions = {}) {
-  /** Enabled rules, compiled. A rule that no longer compiles after an upgrade is left out and says why. */
+export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes = 60, compile: compileText = compileRule, incidents }: SiemOptions = {}) {
+  /** Enabled detection rules, compiled: each makes signals of its own. A rule that no longer compiles is left out and says why. */
   const compiled = new Map<string, Rule>();
+  /** Detection rules an enabled correlation reads, switched on or off: their matches feed it. */
+  const bases = new Map<string, Rule>();
+  /** Enabled correlation rules, with the ids of the rules they read, in their order. */
+  const correlations = new Map<string, { rule: Rule; refs: string[] }>();
   const markError = (id: string, message: string | null) => db.prepare("UPDATE rules SET last_error = ? WHERE id = ?").run(message, id);
 
+  /** The rules a correlation names, by name or id, among the rules here; a name no rule has, or a correlation, says why. */
+  function resolve(rule: Rule, all: Map<string, Rule>): string[] {
+    return rule.correlation!.rules.map((ref) => {
+      const found = [...all].find(([, r]) => r.name === ref || r.id === ref);
+      if (!found) throw new SigmaError(`The correlation reads ${ref}, which no rule here has as its name or id.`);
+      if (found[1].correlation) throw new SigmaError(`The correlation reads ${ref}, a correlation: a correlation of correlations is not supported yet.`);
+      return found[0];
+    });
+  }
+
+  /** Every rule, compiled again; called on start and after each change, so correlations follow the rules they read. */
   function load() {
     compiled.clear();
-    for (const r of db.prepare("SELECT id, source FROM rules WHERE enabled = 1").all() as Array<{ id: string; source: string }>) {
+    bases.clear();
+    correlations.clear();
+    const all = new Map<string, Rule>();
+    const on = new Set<string>();
+    for (const r of db.prepare("SELECT id, source, enabled FROM rules").all() as Array<{ id: string; source: string; enabled: number }>) {
       try {
-        compiled.set(r.id, compileText(r.source));
-        markError(r.id, null);
+        all.set(r.id, compileText(r.source));
+        if (r.enabled) markError(r.id, null);
       } catch (e) {
-        markError(r.id, (e as Error).message.slice(0, 500));
+        if (r.enabled) markError(r.id, (e as Error).message.slice(0, 500));
+      }
+      if (r.enabled) on.add(r.id);
+    }
+    for (const [id, rule] of all) {
+      if (!on.has(id)) continue;
+      if (!rule.correlation) {
+        compiled.set(id, rule);
+        continue;
+      }
+      try {
+        const refs = resolve(rule, all);
+        correlations.set(id, { rule, refs });
+        for (const ref of refs) bases.set(ref, all.get(ref)!);
+      } catch (e) {
+        markError(id, (e as Error).message.slice(0, 500));
       }
     }
   }
   load();
+
+  /** A correlation's group as people read it: the host alone, or field=value pairs; "all" without group-by. */
+  const groupLabel = (fields: string[], values: Array<string | null>) =>
+    !fields.length
+      ? "all"
+      : fields.length === 1 && fields[0] === "host"
+        ? (values[0] ?? "unknown")
+        : fields.map((f, i) => `${f}=${values[i] ?? "-"}`).join(", ");
 
   function compile(source: unknown): Rule {
     if (typeof source !== "string" || !source.trim()) throw bad("source is required: the rule as Sigma YAML or JSON.");
@@ -164,7 +218,7 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
   };
 
   const presentRule = (r: Record<string, any>) => {
-    let meta: Rule | undefined = compiled.get(r.id);
+    let meta: Rule | undefined = compiled.get(r.id) ?? correlations.get(r.id)?.rule;
     if (!meta) {
       try {
         meta = compileRule(r.source);
@@ -179,6 +233,8 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
       enabled: r.enabled === 1,
       description: meta?.description ?? null,
       tags: meta?.tags ?? [],
+      kind: (meta?.correlation ? "correlation" : "detection") as "correlation" | "detection",
+      name: meta?.name ?? null,
       source: r.source as string,
       matches: r.matches as number,
       lastMatchAt: (r.last_match_at as string | null) ?? null,
@@ -206,7 +262,53 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
     count: s.count as number,
     firstSeen: s.first_seen as string,
     lastSeen: s.last_seen as string,
+    incident: s.incident_state
+      ? {
+          state: s.incident_state as "pending" | "opened" | "failed",
+          key: (s.incident_key as string | null) ?? null,
+          url: (s.incident_url as string | null) ?? null,
+          error: (s.incident_error as string | null) ?? null,
+        }
+      : null,
   });
+
+  let delivering: Promise<void> | undefined;
+  /**
+   * Sends the signals waiting for an incident to Incidents, one at a time. One that fails stays waiting, with why, and
+   * is tried again at the next turn, for a day; Incidents keeps one incident per signal however often it is asked.
+   */
+  function deliverIncidents(): Promise<void> {
+    if (!incidents) return Promise.resolve();
+    if (delivering) return delivering;
+    const run = (async () => {
+      const cutoff = new Date(Date.now() - INCIDENT_TRIES_MS).toISOString();
+      db.prepare(
+        "UPDATE signals SET incident_state = 'failed', incident_error = COALESCE(incident_error, 'Incidents was not reached for a day.') WHERE incident_state = 'pending' AND first_seen < ?",
+      ).run(cutoff);
+      const waiting = db.prepare("SELECT * FROM signals WHERE incident_state = 'pending' ORDER BY first_seen LIMIT 50").all() as Array<Record<string, any>>;
+      for (const s of waiting) {
+        try {
+          const opened = await incidents.link.open({
+            reference: `signal:${s.id}`,
+            title: `${s.rule_title} on ${s.host}`,
+            severity: s.severity as Level,
+            summary: `SIEM: the rule "${s.rule_title}" matched on ${s.host}, first at ${s.first_seen}. The signal lists its first events.`,
+            evidence: { title: `SIEM signal: ${s.rule_title} on ${s.host}`, url: incidents.signalUrl(s.id as string) },
+          });
+          db.prepare("UPDATE signals SET incident_state = 'opened', incident_key = ?, incident_url = ?, incident_error = NULL WHERE id = ?").run(
+            opened.key,
+            opened.url,
+            s.id,
+          );
+        } catch (err) {
+          db.prepare("UPDATE signals SET incident_error = ? WHERE id = ?").run((err as Error).message.slice(0, 300), s.id);
+        }
+      }
+    })();
+    // Cleared after it is set, also when there was nothing to send and the run ended at once.
+    delivering = run.finally(() => (delivering = undefined));
+    return delivering;
+  }
 
   const signalRow = (id: string) => {
     const s = db.prepare("SELECT * FROM signals WHERE id = ?").get(id) as Record<string, any> | undefined;
@@ -216,6 +318,7 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
 
   return {
     reload: load,
+    deliverIncidents,
 
     /**
      * Keeps events and runs every enabled rule over them. A rule that fails on an event is noted on the rule and
@@ -228,6 +331,7 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
       const events = list.map((e, i) => parseEvent(e, list.length === 1 && !Array.isArray(body) ? "The event" : `Event ${i}`));
       const received = now();
       const touched = new Set<string>();
+      let opened = false;
       db.exec("BEGIN IMMEDIATE");
       try {
         const insert = db.prepare("INSERT INTO events (time, host, source, message, fields, received_at) VALUES (?, ?, ?, ?, ?, ?)");
@@ -235,39 +339,65 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
           "SELECT id, first_seen, samples FROM signals WHERE rule_id = ? AND host = ? AND status IN ('new', 'investigating') AND last_seen >= ? ORDER BY last_seen DESC LIMIT 1",
         );
         const hit = db.prepare("UPDATE rules SET matches = matches + 1, last_match_at = ? WHERE id = ?");
+        const keep = db.prepare("INSERT INTO correlation_hits (correlation_id, group_key, rule_id, time, event_id, value) VALUES (?, ?, ?, ?, ?, ?)");
+        const forget = db.prepare("DELETE FROM correlation_hits WHERE correlation_id = ? AND group_key = ? AND time < ?");
+        const window = db.prepare(
+          "SELECT rule_id AS rule, time, event_id AS event, value FROM correlation_hits WHERE correlation_id = ? AND group_key = ? AND time >= ? AND time <= ? ORDER BY time, rowid LIMIT 10001",
+        );
         const failed = new Set<string>();
+        /** One signal per rule and host (or correlation group) in the window: a new one, or one more on the open one. */
+        const signal = (ruleId: string, rule: Rule, host: string, time: string, eventId: number) => {
+          hit.run(received, ruleId);
+          const since = new Date(Date.parse(time) - windowMinutes * 60_000).toISOString();
+          const open = find.get(ruleId, host, since) as { id: string; first_seen: string; samples: string } | undefined;
+          if (open) {
+            const samples = JSON.parse(open.samples) as number[];
+            if (samples.length < SAMPLES) samples.push(eventId);
+            db.prepare("UPDATE signals SET count = count + 1, last_seen = MAX(last_seen, ?), first_seen = MIN(first_seen, ?), samples = ? WHERE id = ?").run(
+              time,
+              time,
+              JSON.stringify(samples),
+              open.id,
+            );
+            touched.add(open.id);
+          } else {
+            const sid = randomUUID();
+            const incident = incidents && RANK[rule.level] >= RANK[incidents.minSeverity] ? "pending" : null;
+            db.prepare(
+              "INSERT INTO signals (id, rule_id, rule_title, severity, host, count, first_seen, last_seen, samples, incident_state) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
+            ).run(sid, ruleId, rule.title, rule.level, host, time, time, JSON.stringify([eventId]), incident);
+            touched.add(sid);
+            if (incident) opened = true;
+          }
+        };
         for (const e of events) {
           const id = Number(insert.run(e.time, e.host, e.source, e.message, JSON.stringify(e.fields), received).lastInsertRowid);
-          for (const [ruleId, rule] of compiled) {
-            let matched = false;
+          // Each rule is run once on an event, whether for its own signals, a correlation, or both.
+          const results = new Map<string, boolean>();
+          const test = (ruleId: string, rule: Rule) => {
+            let matched = results.get(ruleId);
+            if (matched !== undefined) return matched;
             try {
               matched = rule.matches(e.fields);
             } catch (err) {
               if (!failed.has(ruleId)) (failed.add(ruleId), markError(ruleId, `Failed on an event: ${(err as Error).message}`.slice(0, 500)));
-              continue;
+              matched = false;
             }
-            if (!matched) continue;
-            hit.run(received, ruleId);
-            const host = e.host ?? "unknown";
-            const since = new Date(Date.parse(e.time) - windowMinutes * 60_000).toISOString();
-            const open = find.get(ruleId, host, since) as { id: string; first_seen: string; samples: string } | undefined;
-            if (open) {
-              const samples = JSON.parse(open.samples) as number[];
-              if (samples.length < SAMPLES) samples.push(id);
-              db.prepare("UPDATE signals SET count = count + 1, last_seen = MAX(last_seen, ?), first_seen = MIN(first_seen, ?), samples = ? WHERE id = ?").run(
-                e.time,
-                e.time,
-                JSON.stringify(samples),
-                open.id,
-              );
-              touched.add(open.id);
-            } else {
-              const sid = randomUUID();
-              db.prepare(
-                "INSERT INTO signals (id, rule_id, rule_title, severity, host, count, first_seen, last_seen, samples) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
-              ).run(sid, ruleId, rule.title, rule.level, host, e.time, e.time, JSON.stringify([id]));
-              touched.add(sid);
-            }
+            results.set(ruleId, matched);
+            return matched;
+          };
+          for (const [ruleId, rule] of compiled) if (test(ruleId, rule)) signal(ruleId, rule, e.host ?? "unknown", e.time, id);
+          for (const [cid, { rule, refs }] of correlations) {
+            const matched = refs.filter((ref) => test(ref, bases.get(ref)!));
+            if (!matched.length) continue;
+            const c = rule.correlation!;
+            const values = c.groupBy.map((f) => fieldValue(e.fields, f));
+            const key = JSON.stringify(values);
+            const value = c.condition?.field ? fieldValue(e.fields, c.condition.field) : null;
+            for (const ref of matched) keep.run(cid, key, ref, e.time, id, value);
+            const from = new Date(Date.parse(e.time) - c.timespanMs).toISOString();
+            forget.run(cid, key, new Date(Date.parse(e.time) - MAX_TIMESPAN_MS).toISOString());
+            if (fires(c, refs, window.all(cid, key, from, e.time) as unknown as Hit[])) signal(cid, rule, groupLabel(c.groupBy, values), e.time, id);
           }
         }
         db.exec("COMMIT");
@@ -275,6 +405,8 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
         db.exec("ROLLBACK");
         throw err;
       }
+      // Incidents is called after the answer is decided, so a slow or absent Incidents never holds back events.
+      if (opened) void deliverIncidents();
       return { accepted: events.length, signals: touched.size };
     },
 
@@ -326,7 +458,7 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
         at,
         at,
       );
-      if (enabled) compiled.set(id, rule);
+      load();
       return presentRule(ruleRow(id));
     },
 
@@ -353,20 +485,23 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
         now(),
         id,
       );
-      if (!on) compiled.delete(id);
-      else {
+      if (on && !next) {
         try {
-          compiled.set(id, next ?? compileText(current.source));
+          compileText(current.source);
         } catch (e) {
           throw new SiemError(422, "invalid-rule", (e as Error).message);
         }
       }
+      load();
       return presentRule(ruleRow(id));
     },
 
     deleteRule(id: string) {
-      if (db.prepare("DELETE FROM rules WHERE id = ?").run(id).changes === 0) throw notFound("The rule");
-      compiled.delete(id);
+      ruleRow(id);
+      const readers = [...correlations.values()].filter((c) => c.refs.includes(id)).map((c) => c.rule.title);
+      if (readers.length) throw new SiemError(409, "conflict", `${readers.join(", ")} reads this rule: change or delete the correlation first.`);
+      db.prepare("DELETE FROM rules WHERE id = ?").run(id);
+      load();
     },
 
     /** Runs rule text over the newest events without saving anything, so a rule is checked before it goes live. */
@@ -377,18 +512,59 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
       const rule = compile(source);
       const rows = db.prepare("SELECT * FROM events ORDER BY time DESC, id DESC LIMIT ?").all(limit) as unknown as EventRow[];
       const matched: EventRow[] = [];
-      for (const r of rows) {
-        try {
-          if (rule.matches(JSON.parse(r.fields) as Event)) matched.push(r);
-        } catch (e) {
-          throw new SiemError(422, "invalid-rule", `The rule failed on event ${r.id}: ${(e as Error).message}`);
+      const groups = new Set<string>();
+      if (!rule.correlation) {
+        for (const r of rows) {
+          try {
+            if (rule.matches(JSON.parse(r.fields) as Event)) (matched.push(r), groups.add(r.host ?? "unknown"));
+          } catch (e) {
+            throw new SiemError(422, "invalid-rule", `The rule failed on event ${r.id}: ${(e as Error).message}`);
+          }
         }
+      } else {
+        // A correlation is run over the events oldest first, as ingest would have, with the rules it reads as they are now.
+        const all = new Map<string, Rule>();
+        for (const r of db.prepare("SELECT id, source FROM rules").all() as Array<{ id: string; source: string }>) {
+          try {
+            all.set(r.id, compileText(r.source));
+          } catch {
+            // A rule that does not compile is no rule to read.
+          }
+        }
+        let refs: string[];
+        try {
+          refs = resolve(rule, all);
+        } catch (e) {
+          throw new SiemError(422, "invalid-rule", (e as Error).message);
+        }
+        const c = rule.correlation;
+        const hits = new Map<string, Hit[]>();
+        for (const r of [...rows].reverse()) {
+          const fields = JSON.parse(r.fields) as Event;
+          const ruleHits = refs.filter((ref) => {
+            try {
+              return all.get(ref)!.matches(fields);
+            } catch {
+              return false;
+            }
+          });
+          if (!ruleHits.length) continue;
+          const values = c.groupBy.map((f) => fieldValue(fields, f));
+          const key = JSON.stringify(values);
+          const from = new Date(Date.parse(r.time) - c.timespanMs).toISOString();
+          const value = c.condition?.field ? fieldValue(fields, c.condition.field) : null;
+          const group = (hits.get(key) ?? []).filter((h) => h.time >= from);
+          for (const ref of ruleHits) group.push({ rule: ref, time: r.time, event: r.id, value });
+          hits.set(key, group);
+          if (fires(c, refs, group)) (matched.push(r), groups.add(groupLabel(c.groupBy, values)));
+        }
+        matched.reverse();
       }
       return {
-        rule: { title: rule.title, level: rule.level },
+        rule: { title: rule.title, level: rule.level, kind: rule.correlation ? "correlation" : "detection" },
         evaluated: rows.length,
         matches: matched.length,
-        hosts: new Set(matched.map((m) => m.host ?? "unknown")).size,
+        hosts: groups.size,
         events: matched.slice(0, SAMPLES).map(present),
       };
     },
@@ -466,6 +642,7 @@ export function createSiem(db: DatabaseSync, { retentionDays = 30, windowMinutes
       const before = new Date(Date.now() - retentionDays * 86_400_000).toISOString();
       db.prepare("DELETE FROM events WHERE time < ?").run(before);
       db.prepare("DELETE FROM signals WHERE status IN ('closed', 'false-positive') AND last_seen < ?").run(before);
+      db.prepare("DELETE FROM correlation_hits WHERE time < ?").run(new Date(Date.now() - MAX_TIMESPAN_MS).toISOString());
     },
   };
 }

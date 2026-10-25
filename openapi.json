@@ -32,6 +32,10 @@
     {
       "name": "Product",
       "description": "Version and overview of this siem."
+    },
+    {
+      "name": "Collection",
+      "description": "siem-agent instances and the hosts they read over SSH, from the install's hosts file (ADR 0040, 0031, 0052)."
     }
   ],
   "paths": {
@@ -357,7 +361,7 @@
             "adminToken": []
           }
         ],
-        "description": "Sigma YAML or JSON. Supported: selections of fields with the modifiers contains, startswith, endswith, re and all; keyword lists; conditions with and, or, not, parentheses, `1 of`, `any of` and `all of` over names, patterns and `them`. Aggregations and timeframes are refused with a message.\n\nNeeds the admin role.",
+        "description": "Sigma YAML or JSON. Supported: selections of fields with the modifiers contains, startswith, endswith, re and all; keyword lists; conditions with and, or, not, parentheses, `1 of`, `any of` and `all of` over names, patterns and `them`. A rule with `correlation` instead of `detection` reads other rules by name or id: event_count, value_count (gt, gte or eq), temporal and temporal_ordered, grouped by fields, within a timespan of 1s to 1d. A rule a correlation reads is matched for it even when switched off. Aggregations, timeframes, lt and lte, and correlations of correlations are refused with a message.\n\nNeeds the admin role.",
         "requestBody": {
           "required": true,
           "content": {
@@ -613,7 +617,7 @@
             "adminToken": []
           }
         ],
-        "description": "Needs the admin role.",
+        "description": "An enabled correlation that reads the rule is changed or deleted first (409).\n\nNeeds the admin role.",
         "parameters": [
           {
             "name": "id",
@@ -636,6 +640,9 @@
             "$ref": "#/components/responses/Problem"
           },
           "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
             "$ref": "#/components/responses/Problem"
           },
           "503": {
@@ -1070,6 +1077,794 @@
           }
         }
       }
+    },
+    "/api/v1/agents": {
+      "get": {
+        "operationId": "listAgents",
+        "tags": [
+          "Collection"
+        ],
+        "summary": "List agents",
+        "description": "Needs the viewer role.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "x-openasy-role": "viewer",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "agents"
+                  ],
+                  "properties": {
+                    "agents": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Agent"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAgent",
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Add an agent",
+        "description": "Returns a one-time enrolment token, valid for 7 days. Start siem-agent with it; the agent then has its own secret (ADR 0023).\n\nNeeds the admin role.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "x-openasy-role": "admin",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewAgent"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{id}": {
+      "get": {
+        "operationId": "getAgent",
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Get an agent",
+        "description": "Needs the viewer role.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "x-openasy-role": "viewer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteAgent",
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Remove an agent",
+        "description": "Only an agent that reads no hosts. Its secret stops working.\n\nNeeds the admin role.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "x-openasy-role": "admin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{id}/enroll-token": {
+      "post": {
+        "operationId": "reEnrollAgent",
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Enrol an agent again",
+        "description": "A new one-time token, for an agent that lost its volume. Its old secret stops working; its hosts must trust the new CA.\n\nNeeds the admin role.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "x-openasy-role": "admin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewAgent"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{id}/setup": {
+      "get": {
+        "operationId": "agentSetup",
+        "tags": [
+          "Collection"
+        ],
+        "summary": "What to put on the hosts this agent reads",
+        "description": "Its CA public key, the sshd drop-in, the commands to prepare a host (with the systemd-journal group, which reading the system journal needs) and the fixed key.\n\nNeeds the viewer role.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "x-openasy-role": "viewer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSetup"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/agent/enroll": {
+      "post": {
+        "operationId": "agentEnroll",
+        "tags": [
+          "Collection"
+        ],
+        "summary": "siem-agent: enrol with a one-time token",
+        "description": "Called by siem-agent, not by people.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AgentReport"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "token"
+                    ],
+                    "properties": {
+                      "token": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "agentId",
+                    "secret"
+                  ],
+                  "properties": {
+                    "agentId": {
+                      "type": "string"
+                    },
+                    "secret": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/agent/work": {
+      "post": {
+        "operationId": "agentWork",
+        "tags": [
+          "Collection"
+        ],
+        "summary": "siem-agent: ask for jobs",
+        "description": "Each job is leased for 2 minutes. Answers 409 when the agent's version differs from siem's (ADR 0019).",
+        "security": [
+          {
+            "agentSecret": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "jobs"
+                  ],
+                  "properties": {
+                    "jobs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Job"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/agent/results": {
+      "post": {
+        "operationId": "agentResult",
+        "tags": [
+          "Collection"
+        ],
+        "summary": "siem-agent: send what a read found",
+        "description": "Secrets in values are masked by the agent, and the events go through siem's rules as POST /api/v1/events does. The cursor moves only once they are kept. Gzip the body.",
+        "security": [
+          {
+            "agentSecret": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Result"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/hosts": {
+      "get": {
+        "operationId": "listHosts",
+        "tags": [
+          "Collection"
+        ],
+        "summary": "List hosts",
+        "description": "The hosts come from the hosts file (OPENASY_HOSTS, ADR 0052); no route adds or changes one.\n\nNeeds the viewer role.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "x-openasy-role": "viewer",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "hosts",
+                    "file"
+                  ],
+                  "properties": {
+                    "hosts": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Host"
+                      }
+                    },
+                    "file": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/HostsFile"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The hosts file as last read; null without OPENASY_HOSTS."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/hosts/{id}": {
+      "get": {
+        "operationId": "getHost",
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Get a host",
+        "description": "Needs the viewer role.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "x-openasy-role": "viewer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Host"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/hosts/{id}/read": {
+      "post": {
+        "operationId": "readHost",
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Read now",
+        "description": "Needs the editor role.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "x-openasy-role": "editor",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The host, read at the agent's next turn.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Host"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/hosts/{id}/host-key": {
+      "post": {
+        "operationId": "fetchHostKey",
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Ask the host for its key again",
+        "description": "Needs the admin role.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "x-openasy-role": "admin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Host"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/api/v1/hosts/{id}/host-key/accept": {
+      "post": {
+        "operationId": "acceptHostKey",
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Accept a host key",
+        "description": "After checking on the host that `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` prints this fingerprint.\n\nNeeds the admin role.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "x-openasy-role": "admin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "fingerprint"
+                ],
+                "properties": {
+                  "fingerprint": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Host"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1083,7 +1878,7 @@
       "apiToken": {
         "type": "http",
         "scheme": "bearer",
-        "description": "An API token created under Settings \u2192 API tokens (`oa_siem_...`): one role, always an expiry (ADR 0003)."
+        "description": "An API token created under Settings → API tokens (`oa_siem_...`): one role, always an expiry (ADR 0003)."
       },
       "adminToken": {
         "type": "http",
@@ -1094,6 +1889,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "`SIEM_INGEST_TOKEN`: for log shippers and scripts. It can send events, nothing else."
+      },
+      "agentSecret": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "siem-agent's own secret (`oia_...`), from enrolment (ADR 0023)."
       }
     },
     "responses": {
@@ -1407,6 +2207,8 @@
           "enabled",
           "description",
           "tags",
+          "kind",
+          "name",
           "source",
           "matches",
           "lastMatchAt",
@@ -1444,6 +2246,25 @@
             "items": {
               "type": "string"
             }
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "detection",
+              "correlation"
+            ],
+            "description": "detection: matches single events, and makes signals of its own when enabled. correlation: reads the matches of other rules (Sigma correlation) and makes a signal per group when its condition holds."
+          },
+          "name": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "Sigma's name of the rule, which a correlation reads it by, as it may by id."
           },
           "source": {
             "type": "string",
@@ -1579,7 +2400,8 @@
             "type": "object",
             "required": [
               "title",
-              "level"
+              "level",
+              "kind"
             ],
             "additionalProperties": false,
             "properties": {
@@ -1588,6 +2410,13 @@
               },
               "level": {
                 "$ref": "#/components/schemas/Level"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "detection",
+                  "correlation"
+                ]
               }
             }
           },
@@ -1599,7 +2428,7 @@
           },
           "hosts": {
             "type": "integer",
-            "description": "Hosts the matching events came from."
+            "description": "Hosts the matches were on; for a correlation, the groups it fired for."
           },
           "events": {
             "type": "array",
@@ -1622,7 +2451,8 @@
           "changedBy",
           "count",
           "firstSeen",
-          "lastSeen"
+          "lastSeen",
+          "incident"
         ],
         "properties": {
           "id": {
@@ -1697,6 +2527,71 @@
           "lastSeen": {
             "type": "string",
             "format": "date-time"
+          },
+          "incident": {
+            "description": "The incident this signal opened in OpenAsy Incidents, when SIEM_INCIDENTS_TOKEN is set and the signal is at least SIEM_INCIDENTS_MIN_SEVERITY; null otherwise.",
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "state",
+                  "key",
+                  "url",
+                  "error"
+                ],
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "opened",
+                      "failed"
+                    ],
+                    "description": "pending: waiting for Incidents, tried again every minute. opened: Incidents has it. failed: given up after a day."
+                  },
+                  "key": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "examples": [
+                          "INC-12"
+                        ]
+                      }
+                    ]
+                  },
+                  "url": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "format": "uri"
+                      }
+                    ],
+                    "description": "The incident's page in Incidents."
+                  },
+                  "error": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ],
+                    "description": "Why the last try failed."
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -1901,6 +2796,562 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "HostKey": {
+        "type": "object",
+        "required": [
+          "type",
+          "fingerprint"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string",
+            "pattern": "^SHA256:"
+          }
+        }
+      },
+      "Agent": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "version",
+          "caFingerprint",
+          "lastSeenAt",
+          "lastError",
+          "hosts",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "waiting-to-enrol",
+              "online",
+              "offline",
+              "version-mismatch"
+            ]
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "caFingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastSeenAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hosts": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "NewAgent": {
+        "type": "object",
+        "required": [
+          "agent",
+          "enrollToken",
+          "enrollExpiresAt"
+        ],
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/Agent"
+          },
+          "enrollToken": {
+            "type": "string",
+            "description": "One-time, valid 7 days (ole_...). Shown once."
+          },
+          "enrollExpiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AgentSetup": {
+        "type": "object",
+        "required": [
+          "agent",
+          "caPublicKey",
+          "caFingerprint",
+          "keyPublicKey",
+          "sshdConfig",
+          "hostSetup",
+          "authorizedKey"
+        ],
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/Agent"
+          },
+          "caPublicKey": {
+            "type": "string"
+          },
+          "caFingerprint": {
+            "type": "string"
+          },
+          "keyPublicKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sshdConfig": {
+            "type": "string"
+          },
+          "hostSetup": {
+            "type": "string"
+          },
+          "authorizedKey": {
+            "type": "string"
+          }
+        }
+      },
+      "AgentReport": {
+        "type": "object",
+        "required": [
+          "version",
+          "caPublicKey",
+          "keyPublicKey",
+          "setup"
+        ],
+        "description": "What siem-agent says about itself on every call: its version (it must equal siem's, ADR 0019), its public keys and the host setup.",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "caPublicKey": {
+            "type": "string"
+          },
+          "keyPublicKey": {
+            "type": "string"
+          },
+          "setup": {
+            "type": "object",
+            "required": [
+              "sshdConfig",
+              "hostSetup",
+              "authorizedKey"
+            ],
+            "properties": {
+              "sshdConfig": {
+                "type": "string"
+              },
+              "hostSetup": {
+                "type": "string"
+              },
+              "authorizedKey": {
+                "type": "string"
+              }
+            }
+          },
+          "running": {
+            "type": "integer"
+          }
+        }
+      },
+      "HostsFile": {
+        "type": "object",
+        "required": [
+          "path",
+          "appliedAt",
+          "entries",
+          "error",
+          "warnings"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "appliedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it was last read and applied; null if it never was."
+          },
+          "entries": {
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the file on disk is not applied."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What to fix that did not stop the file from being applied, such as a host whose agent is not enrolled yet."
+          }
+        },
+        "description": "The hosts file (ADR 0052), shared with Infrastructure. It is read again within a minute of a change; a file that cannot be applied leaves the hosts from its last good version."
+      },
+      "Host": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "agent",
+          "fileHostKey",
+          "address",
+          "port",
+          "user",
+          "auth",
+          "intervalSeconds",
+          "hostKeys",
+          "pendingHostKeys",
+          "status",
+          "statusDetail",
+          "unreadable",
+          "eventsIn",
+          "lastAttemptAt",
+          "lastSuccessAt",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "object",
+            "required": [
+              "id",
+              "name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "fileHostKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The fingerprint hostKey gives in the hosts file: a host that presents that key is trusted without an admin, and no other key can be accepted here."
+          },
+          "address": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "user": {
+            "type": "string"
+          },
+          "auth": {
+            "type": "string",
+            "enum": [
+              "certificate",
+              "key"
+            ]
+          },
+          "intervalSeconds": {
+            "type": "integer"
+          },
+          "hostKeys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HostKey"
+            }
+          },
+          "pendingHostKeys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HostKey"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "new",
+              "host-key-pending",
+              "host-key-changed",
+              "pending",
+              "ok",
+              "unreachable",
+              "auth-failed",
+              "timeout",
+              "error"
+            ],
+            "description": "Of the last read. new and host-key-pending wait for an admin to accept the host key."
+          },
+          "statusDetail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unreadable": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What the account may not read, such as the system journal without the systemd-journal group, or the audit log."
+          },
+          "lastAttemptAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastSuccessAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "eventsIn": {
+            "type": "integer",
+            "description": "Events read from the host and kept."
+          }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "required": [
+          "id",
+          "hostId",
+          "action",
+          "target",
+          "cursor"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "hostId": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "read",
+              "host-key"
+            ]
+          },
+          "target": {
+            "type": "object",
+            "required": [
+              "address",
+              "port",
+              "user",
+              "hostKeys",
+              "auth"
+            ],
+            "properties": {
+              "address": {
+                "type": "string"
+              },
+              "port": {
+                "type": "integer"
+              },
+              "user": {
+                "type": "string"
+              },
+              "hostKeys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "auth": {
+                "type": "string",
+                "enum": [
+                  "certificate",
+                  "key"
+                ]
+              },
+              "keyFile": {
+                "type": "string",
+                "description": "With auth key: a private key in the agent's key folder; the agent's own key without it."
+              }
+            }
+          },
+          "cursor": {
+            "type": "object",
+            "required": [
+              "journal"
+            ],
+            "properties": {
+              "journal": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "journalctl's cursor where the last read stopped; null for a first read, which starts 10 minutes back."
+              }
+            }
+          }
+        }
+      },
+      "Result": {
+        "type": "object",
+        "required": [
+          "jobId",
+          "hostId",
+          "ok"
+        ],
+        "description": "One of: events (a read, with where it stopped), hostKeys (the keys a host presents), or error.",
+        "properties": {
+          "jobId": {
+            "type": "string"
+          },
+          "hostId": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "cursor": {
+            "type": "object",
+            "properties": {
+              "journal": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "more": {
+            "type": "boolean",
+            "description": "The read stopped at its limit; the host is read again at once."
+          },
+          "unreadable": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "hostKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "error": {
+            "type": "object",
+            "required": [
+              "kind",
+              "message"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "events": {
+            "type": "array",
+            "maxItems": 10000,
+            "description": "Flat events, as POST /api/v1/events takes them. host is set to the host's name from the hosts file, whatever the event says.",
+            "items": {
+              "type": "object"
             }
           }
         }

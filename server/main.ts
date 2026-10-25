@@ -2,10 +2,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { createAuth, oidcFromEnv, readSecretsKey } from "@openasy/auth";
 import { createApp, createMetricsHandler } from "./app.ts";
+import { createCollector } from "./collect.ts";
 import { openDb } from "./db.ts";
+import { watchHosts } from "./hosts.ts";
+import { createIncidentsLink } from "./incidents.ts";
 import { log } from "./log.ts";
 import { parseProducts } from "./products.ts";
-import { createSiem } from "./siem.ts";
+import { createSiem, LEVELS } from "./siem.ts";
+import type { Level } from "./sigma.ts";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
 const port = Number(process.env.PORT ?? 8080);
@@ -39,9 +43,36 @@ const auth = createAuth({
   // Audit log (ADR 0013): every sign-in, failure and change to members and tokens.
   onEvent: (event) => log(event.type === "sign-in-failed" ? "warn" : "info", "auth", { event }),
 });
-const siem = createSiem(db, { retentionDays, windowMinutes });
 const products = parseProducts(process.env.OPENASY_PRODUCTS);
 if (products.invalid.length) log("warn", "OPENASY_PRODUCTS: left out entries that are not id=https://address", { entries: products.invalid });
+// Signals this severe or more open an incident in OpenAsy Incidents, with a token that has the editor role there
+// (ADR 0041). Incidents is called at SIEM_INCIDENTS_URL, or where OPENASY_PRODUCTS says people open it.
+const incidentsPage = products.products.find((p) => p.id === "incidents")?.url;
+const incidentsUrl = process.env.SIEM_INCIDENTS_URL ?? incidentsPage;
+const minSeverity = (process.env.SIEM_INCIDENTS_MIN_SEVERITY ?? "high") as Level;
+if (!LEVELS.includes(minSeverity)) throw new Error(`SIEM_INCIDENTS_MIN_SEVERITY must be one of ${LEVELS.join(", ")}`);
+if (process.env.SIEM_INCIDENTS_TOKEN && !incidentsUrl)
+  log("warn", "SIEM_INCIDENTS_TOKEN is set but no address: set SIEM_INCIDENTS_URL, or incidents in OPENASY_PRODUCTS");
+const incidents =
+  process.env.SIEM_INCIDENTS_TOKEN && incidentsUrl
+    ? {
+        link: createIncidentsLink({ url: incidentsUrl, token: process.env.SIEM_INCIDENTS_TOKEN, publicUrl: incidentsPage, product: "siem" }),
+        minSeverity,
+        signalUrl: (id: string) => `${publicUrl}/?${new URLSearchParams({ signal: id })}`,
+      }
+    : undefined;
+const siem = createSiem(db, { retentionDays, windowMinutes, incidents });
+// siem-agent reads the security events of the hosts in the install's hosts file over SSH (ADR 0040, 0031, 0052).
+const collector = createCollector(db, { version, ingest: (events) => siem.ingest(events) });
+const hostsPath = process.env.OPENASY_HOSTS?.trim() || undefined;
+const hostsFile = hostsPath
+  ? watchHosts(hostsPath, (list) => collector.syncFile(list), {
+      onChange: (s) =>
+        s.error
+          ? log("error", "hosts file not applied; the hosts from its last good version stay", { path: s.path, error: s.error })
+          : log(s.warnings.length ? "warn" : "info", "hosts file applied", { path: s.path, entries: s.entries, warnings: s.warnings }),
+    })
+  : undefined;
 const server = createServer(
   createApp({
     db,
@@ -54,12 +85,18 @@ const server = createServer(
     openapi,
     serveMetrics: metricsPort === undefined,
     products: products.products,
+    collector,
+    hostsFile: hostsFile && (() => hostsFile.state),
   }),
 );
-const metricsServer = metricsPort !== undefined ? createServer(createMetricsHandler(siem, version)) : undefined;
+// Large reads from agents: allow them the time to arrive.
+server.requestTimeout = 5 * 60_000;
+const metricsServer = metricsPort !== undefined ? createServer(createMetricsHandler(siem, version, collector)) : undefined;
 metricsServer?.listen(metricsPort, () => log("info", "metrics on their own port", { port: metricsPort }));
 
-server.listen(port, () => log("info", "siem started", { version, port, db: dbPath, headless, retentionDays }));
+server.listen(port, () =>
+  log("info", "siem started", { version, port, db: dbPath, headless, retentionDays, incidents: incidents ? { url: incidentsUrl, minSeverity } : "off" }),
+);
 if (!process.env.SIEM_INGEST_TOKEN)
   log("warn", "SIEM_INGEST_TOKEN is not set; shippers need an API token with the editor role (Settings, API tokens) to send events");
 if (!publicUrl.startsWith("https://") && !/^http:\/\/(localhost|127\.0\.0\.1)(:|$)/.test(publicUrl)) {
@@ -72,11 +109,18 @@ const setup = auth.setupLink();
 if (setup) log("info", "no owner yet: open this link once to create the owner account", { url: setup });
 
 siem.purge();
-const timers: NodeJS.Timeout[] = [setInterval(() => auth.purge(), 5 * 60_000), setInterval(() => siem.purge(), 24 * 3_600_000)];
+void siem.deliverIncidents();
+const timers: NodeJS.Timeout[] = [
+  setInterval(() => auth.purge(), 5 * 60_000),
+  setInterval(() => siem.purge(), 24 * 3_600_000),
+  // Signals whose incident could not be opened yet, such as while Incidents restarts.
+  setInterval(() => void siem.deliverIncidents(), 60_000),
+];
 
 function shutdown(signal: string) {
   log("info", "shutting down", { signal });
   for (const t of timers) clearInterval(t);
+  hostsFile?.stop();
   metricsServer?.close();
   server.close(() => {
     db.close();

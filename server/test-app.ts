@@ -3,6 +3,7 @@ import { createServer, type RequestListener, type Server } from "node:http";
 import { createAuth } from "@openasy/auth";
 import type { AddressInfo } from "node:net";
 import { createApp, type AppOptions } from "./app.ts";
+import { createCollector } from "./collect.ts";
 import { openDb } from "./db.ts";
 import { createSiem, type SiemOptions } from "./siem.ts";
 
@@ -22,6 +23,7 @@ export const MIMIKATZ = rule(
 export async function startApp(opts: Omit<Partial<AppOptions>, "siem"> & { version: string; siem?: SiemOptions }) {
   const db = openDb(":memory:");
   const siem = createSiem(db, opts.siem);
+  const collector = createCollector(db, { version: opts.version, ingest: (events) => siem.ingest(events) });
   // The origin is known once the port is, so the handler is set after listening.
   let handler: RequestListener = (_req, res) => res.writeHead(503).end();
   const server: Server = createServer((req, res) => handler(req, res));
@@ -29,7 +31,7 @@ export async function startApp(opts: Omit<Partial<AppOptions>, "siem"> & { versi
   const base = `http://localhost:${(server.address() as AddressInfo).port}`;
   const auth = createAuth({ db, product: "siem", productName: "OpenAsy SIEM", origin: base });
   const { siem: _options, ...rest } = opts;
-  handler = createApp({ db, siem, auth, ingestToken: INGEST_TOKEN, adminToken: ADMIN_TOKEN, ...rest });
+  handler = createApp({ db, siem, auth, ingestToken: INGEST_TOKEN, adminToken: ADMIN_TOKEN, collector, ...rest });
   const as =
     (token: string) =>
     (path: string, init: RequestInit = {}) =>
@@ -40,5 +42,5 @@ export async function startApp(opts: Omit<Partial<AppOptions>, "siem"> & { versi
   const send = (events: unknown) => ingest("/api/v1/events", { method: "POST", body: JSON.stringify(events) });
   const addRule = (source: string, enabled = true) => admin("/api/v1/rules", { method: "POST", body: JSON.stringify({ source, enabled }) });
   const close = () => new Promise<void>((resolve) => server.close(() => resolve()));
-  return { db, siem, auth, base, admin, ingest, send, addRule, close };
+  return { db, siem, collector, auth, base, admin, ingest, send, addRule, close };
 }

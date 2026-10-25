@@ -38,6 +38,9 @@ export interface Rule {
   enabled: boolean;
   description: string | null;
   tags: string[];
+  /** A correlation reads the matches of other rules, by their name or id. */
+  kind: "detection" | "correlation";
+  name: string | null;
   source: string;
   matches: number;
   lastMatchAt: string | null;
@@ -48,7 +51,7 @@ export interface Rule {
 }
 
 export interface RuleTest {
-  rule: { title: string; level: Level };
+  rule: { title: string; level: Level; kind: "detection" | "correlation" };
   evaluated: number;
   matches: number;
   hosts: number;
@@ -66,6 +69,8 @@ export interface Signal {
   count: number;
   firstSeen: string;
   lastSeen: string;
+  /** The incident it opened in OpenAsy Incidents, when siem is linked to it. */
+  incident: { state: "pending" | "opened" | "failed"; key: string | null; url: string | null; error: string | null } | null;
 }
 
 export interface SignalDetail extends Signal {
@@ -91,4 +96,64 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(problem.detail ?? `${path}: ${res.status}`);
   }
   return (res.status === 204 ? undefined : await res.json()) as T;
+}
+
+/** A siem-agent instance (ADR 0040, 0031). */
+export interface Agent {
+  id: string;
+  name: string;
+  status: "waiting-to-enrol" | "online" | "version-mismatch" | "offline";
+  version: string | null;
+  caFingerprint: string | null;
+  lastSeenAt: string | null;
+  lastError: string | null;
+  hosts: number;
+  createdAt: string;
+}
+
+/** What to put on the hosts an agent reads. */
+export interface AgentSetup {
+  agent: Agent;
+  caPublicKey: string;
+  caFingerprint: string;
+  keyPublicKey: string | null;
+  sshdConfig: string;
+  hostSetup: string;
+  authorizedKey: string;
+}
+
+export interface HostKey {
+  type: string;
+  fingerprint: string;
+}
+
+/** A host of the hosts file an agent reads over SSH (ADR 0052). */
+export interface Host {
+  id: string;
+  name: string;
+  agent: { id: string; name: string };
+  fileHostKey: string | null;
+  address: string;
+  port: number;
+  user: string;
+  auth: "certificate" | "key";
+  intervalSeconds: number;
+  hostKeys: HostKey[];
+  pendingHostKeys: HostKey[];
+  status: string;
+  statusDetail: string | null;
+  unreadable: string[];
+  eventsIn: number;
+  lastAttemptAt: string | null;
+  lastSuccessAt: string | null;
+  createdAt: string;
+}
+
+/** The hosts file as last read. */
+export interface HostsFile {
+  path: string;
+  appliedAt: string | null;
+  entries: number;
+  error: string | null;
+  warnings: string[];
 }

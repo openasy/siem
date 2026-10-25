@@ -12,6 +12,8 @@ export interface Gauges {
   rules: { total: number; enabled: number; failing: number };
   /** Open signals (new or being investigated) by severity. */
   signals: Record<string, number>;
+  /** siem-agent instances and the hosts they read, by status; absent without collection. */
+  collection?: { agents: Record<string, number>; hosts: Record<string, number> };
 }
 
 export function renderMetrics(version: string, g: Gauges): string {
@@ -36,6 +38,16 @@ export function renderMetrics(version: string, g: Gauges): string {
     "# HELP openasy_siem_open_signals Open signals by severity.",
     "# TYPE openasy_siem_open_signals gauge",
     ...Object.entries(g.signals).map(([s, n]) => `openasy_siem_open_signals{severity="${s}"} ${n}`),
+    ...(g.collection
+      ? [
+          "# HELP openasy_siem_agents siem-agent instances by status.",
+          "# TYPE openasy_siem_agents gauge",
+          ...Object.entries(g.collection.agents).map(([s, n]) => `openasy_siem_agents{status="${s}"} ${n}`),
+          "# HELP openasy_siem_hosts Hosts the agents read, by status.",
+          "# TYPE openasy_siem_hosts gauge",
+          ...Object.entries(g.collection.hosts).map(([s, n]) => `openasy_siem_hosts{status="${s}"} ${n}`),
+        ]
+      : []),
     "# HELP process_uptime_seconds Seconds since the process started.",
     "# TYPE process_uptime_seconds gauge",
     `process_uptime_seconds ${process.uptime().toFixed(0)}`,

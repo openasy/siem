@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { parseHosts } from "./hosts.ts";
 import { ADMIN_TOKEN, FAILED_LOGIN, INGEST_TOKEN, startApp } from "./test-app.ts";
 
 // Contract tests (ADR 0024): every response the API sends must match openapi.json.
@@ -174,6 +175,72 @@ describe("responses match openapi.json", () => {
     await call("DELETE", "/api/v1/rules/{id}", admin(), `/api/v1/rules/${rule}`);
     await call("DELETE", "/api/v1/rules/{id}", admin(), `/api/v1/rules/${rule}`);
     await call("DELETE", "/api/v1/rules/{id}", { method: "DELETE" }, "/api/v1/rules/x");
+  });
+
+  it("agents and hosts", async () => {
+    const KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFmXq7hWQvK1eF4s3n0q6X8b9mZ2nqJ8V7cJq3s1kR2x";
+    const report = {
+      version,
+      caPublicKey: KEY.replace("Fm", "Cm"),
+      keyPublicKey: KEY.replace("Fm", "Hm"),
+      setup: { sshdConfig: "x", hostSetup: "usermod -aG systemd-journal openasy", authorizedKey: "restrict x" },
+      running: 0,
+    };
+    const { body: made } = await call("POST", "/api/v1/agents", admin({ name: "dc-1" }));
+    const id = (made as { agent: { id: string } }).agent.id;
+    await call("POST", "/api/v1/agents", admin({ name: "dc-1" }));
+    await call("POST", "/api/v1/agents", admin({ name: "-" }));
+    await call("GET", "/api/v1/agents/{id}/setup", admin(), `/api/v1/agents/${id}/setup`);
+    await call("POST", "/api/v1/agent/enroll", auth("x", JSON.stringify({ token: "oie_wrong", ...report })));
+    await call("POST", "/api/v1/agent/enroll", auth("x", JSON.stringify({ token: (made as { enrollToken: string }).enrollToken, ...report, version: 1 })));
+    const { body: again } = await call("POST", "/api/v1/agents/{id}/enroll-token", admin(), `/api/v1/agents/${id}/enroll-token`);
+    const { body: enrolled } = await call(
+      "POST",
+      "/api/v1/agent/enroll",
+      auth("x", JSON.stringify({ token: (again as { enrollToken: string }).enrollToken, ...report })),
+    );
+    const secret = (enrolled as { secret: string }).secret;
+    await call("GET", "/api/v1/agents", admin());
+    await call("GET", "/api/v1/agents/{id}", admin(), `/api/v1/agents/${id}`);
+    await call("GET", "/api/v1/agents/{id}", admin(), "/api/v1/agents/missing");
+    await call("GET", "/api/v1/agents/{id}/setup", admin(), `/api/v1/agents/${id}/setup`);
+    await call("POST", "/api/v1/agent/work", auth("oia_wrong", JSON.stringify(report)));
+    await call("POST", "/api/v1/agent/work", auth(secret, JSON.stringify({ ...report, version: "0.0.1" })));
+
+    app.collector.syncFile(parseHosts("hosts:\n  - { name: web-1, address: 10.0.0.5, hostKey: first }\n"));
+    const { body: hosts } = await call("GET", "/api/v1/hosts", admin());
+    const host = (hosts as { hosts: Array<{ id: string }> }).hosts[0]!.id;
+    await call("POST", "/api/v1/hosts/{id}/read", admin(), `/api/v1/hosts/${host}/read`);
+    const { body: work } = await call("POST", "/api/v1/agent/work", auth(secret, JSON.stringify(report)));
+    const job = (work as { jobs: Array<{ id: string }> }).jobs[0]!;
+    await call("POST", "/api/v1/agent/results", auth(secret, JSON.stringify({ jobId: job.id, hostId: host, ok: true, hostKeys: [KEY] })));
+    await call(
+      "POST",
+      "/api/v1/agent/results",
+      auth(
+        secret,
+        JSON.stringify({ jobId: job.id, hostId: host, ok: true, events: [{ source: "sshd", message: "Failed password" }], cursor: { journal: null } }),
+      ),
+    );
+    await call("POST", "/api/v1/agent/results", auth(secret, JSON.stringify({ jobId: job.id, hostId: "missing", ok: true, events: [] })));
+    await call("POST", "/api/v1/agent/results", auth(secret, JSON.stringify({ jobId: job.id, hostId: host, ok: false })));
+    await call("GET", "/api/v1/hosts/{id}", admin(), `/api/v1/hosts/${host}`);
+    await call("GET", "/api/v1/hosts/{id}", admin(), "/api/v1/hosts/missing");
+    await call("POST", "/api/v1/hosts/{id}/read", admin(), `/api/v1/hosts/${host}/read`);
+    await call("POST", "/api/v1/hosts/{id}/host-key", admin(), `/api/v1/hosts/${host}/host-key`);
+    await call("POST", "/api/v1/hosts/{id}/host-key/accept", admin({ fingerprint: "SHA256:nope" }), `/api/v1/hosts/${host}/host-key/accept`);
+    await call("POST", "/api/v1/agent/results", auth(secret, JSON.stringify({ jobId: job.id, hostId: host, ok: true, hostKeys: [KEY.replace("Fm", "Gm")] })));
+    const { body: pending } = await call("GET", "/api/v1/hosts/{id}", admin(), `/api/v1/hosts/${host}`);
+    await call(
+      "POST",
+      "/api/v1/hosts/{id}/host-key/accept",
+      admin({ fingerprint: (pending as { pendingHostKeys: Array<{ fingerprint: string }> }).pendingHostKeys[0]!.fingerprint }),
+      `/api/v1/hosts/${host}/host-key/accept`,
+    );
+    await call("DELETE", "/api/v1/agents/{id}", admin(), `/api/v1/agents/${id}`);
+    app.collector.syncFile([]);
+    await call("DELETE", "/api/v1/agents/{id}", admin(), `/api/v1/agents/${id}`);
+    await call("DELETE", "/api/v1/agents/{id}", admin(), `/api/v1/agents/${id}`);
   });
 
   it("covers every operation in openapi.json", () => {

@@ -18,7 +18,10 @@
     "save": "Kaydet",
     "reason": "Neden",
     "required": "Zorunlu.",
-    "optional": "İsteğe bağlı."
+    "optional": "İsteğe bağlı.",
+    "incident": "Olay",
+    "incidentPending": "Açılıyor",
+    "incidentFailed": "Açılamadı"
   },
   "signalsPage": {
     "severity": "Önem",
@@ -76,7 +79,11 @@
     "sigmaRule": "Sigma kuralı",
     "wouldHaveMatched": "Eşleşecek olanlar:",
     "ofTheNewest": "en yeniler arasından",
-    "on2": ", şunlarda:"
+    "on2": ", şunlarda:",
+    "correlation": "Korelasyon",
+    "never": "hiç",
+    "inGroups_one": ", {{count}} grupta",
+    "inGroups_other": ", {{count}} grupta"
   },
   "eventsPage": {
     "time": "Zaman",
@@ -124,7 +131,9 @@
     "members": "Üyeler",
     "signIn": "Oturum açma",
     "apiTokens": "API token'ları",
-    "account": "Hesap"
+    "account": "Hesap",
+    "hosts": "Sunucular",
+    "agents": "Ajanlar"
   },
   "statusLabel": {
     "falsePositive": "Yanlış alarm"
@@ -148,5 +157,94 @@
   },
   "common": {
     "loading": "Yükleniyor…"
+  },
+  "hostsPage": {
+    "host": "Sunucu",
+    "address": "Adres",
+    "status": "Durum",
+    "events": "Olaylar",
+    "lastRead": "Son okuma",
+    "notReadable": "Okunamıyor:",
+    "agent": "Ajan",
+    "actions": "İşlemler",
+    "readNow": "Şimdi oku",
+    "hosts": "Sunucular",
+    "description": "Kurulumun sunucu listesinde olup siem-agent'ın SSH üzerinden okuduğu sunucular: sistem günlüklerindeki oturum açma, sudo ve hesap değişikliği gibi güvenlik olayları. Üzerlerine hiçbir şey kurulmaz.",
+    "addAnAgentFirst": "Önce bir ajan ekleyin",
+    "addAnAgent": "Ajan ekle",
+    "agentIsInstalledOnce": "siem-agent her ağa bir kez kurulur ve oradaki sunucuları okur. Olaylarını zaten bir gönderici ile yollayan sunucular ajan gerektirmez.",
+    "theHostsFromItsLast": "{{error}} Dosya düzeltilene kadar son sağlam sürümündeki sunucular kalır ({{path}}).",
+    "theHostsFileIsNot": "Sunucu listesi uygulanmadı",
+    "theHostsFileHasSomething": "Sunucu listesinde düzeltilecek bir şey var",
+    "noHostsYetPrepareOne": "Ajanlar altındaki komutlarla bir sunucu hazırlayın, sonra onu kurulumun tuttuğu ve Infrastructure, Logs ile diğer ürünlerin de okuduğu sunucu listesinde (OPENASY_HOSTS) listeleyin, örneğin:",
+    "noHostsFile": "SIEM sunucuları kurulumun sunucu listesinden okur: OPENASY_HOSTS'u o dosyaya ayarlayın, sonra sunucuları listeleyin, örneğin:",
+    "noHostsYet": "Henüz sunucu yok",
+    "linesForTheHostsFile": "Sunucu listesi için satırlar"
+  },
+  "agentsPage": {
+    "agent": "Ajan",
+    "status": "Durum",
+    "hosts": "Sunucular",
+    "version": "Sürüm",
+    "caFingerprint": "CA parmak izi",
+    "lastSeen": "Son görülme",
+    "actions": "İşlemler",
+    "enrolAgainItsSecretStops": "{{name}} yeniden kaydedilsin mi? Sırrı çalışmayı bırakır; CA'sı değişirse okuduğu sunucuların yenisine güvenmesi gerekir.",
+    "enrolAgain": "Yeniden kaydet",
+    "removeAgent": "{{name}} kaldırılsın mı?",
+    "remove": "Kaldır",
+    "agents": "Ajanlar",
+    "description": "siem-agent bir kez, SIEM'in yanına ya da başka bir ağa kurulur ve oradaki sunucuları 5 dakikalık sertifikalarla SSH üzerinden okur. SSH sertifika otoritesini kendisi tutar; SIEM yalnızca hangi sunucunun nereden okunacağını söyler.",
+    "addAgent": "Ajan ekle",
+    "addAnAgent": "Ajan ekleyin",
+    "nameItAfterWhereIt": "Çalıştığı yere göre adlandırın. Başlatmak için tek kullanımlık bir token alırsınız.",
+    "cancel": "Vazgeç",
+    "name": "Ad",
+    "noAgentsYet": "Henüz ajan yok",
+    "prepareAHost": "Sunucu hazırlayın",
+    "runAsRootOnEach": "{{name}} ajanının okuduğu her sunucuda root olarak çalıştırın. openasy hesabını oluşturur, ajanın CA'sına yalnızca bu hesap için güvenir ve sistem günlüğünü okumasına izin verir. Başka hiçbir şey kurulmaz.",
+    "forHostsReadBy": "Şunun okuduğu sunucular için:",
+    "commandsToPrepareAHost": "Sunucu hazırlama komutları",
+    "orWhereSshdConfigCannot": "Ya da sshd_config değiştirilemeyen yerlerde, TTY açamayan ve hiçbir şeyi yönlendirmeyen sabit bir anahtar:",
+    "authorizedKeysLine": "authorized_keys satırı",
+    "caFingerprintIs": "CA parmak izi {{caFingerprint}}"
+  },
+  "keyCheck": {
+    "presentsAnotherKey": "{{name}} başka bir anahtar sunuyor",
+    "checkTheKeyOf": "{{name}} anahtarını kontrol edin",
+    "onTheHostThisMust": "Sunucuda bu komut aynı parmak izini yazdırmalı:",
+    "commandToRunOnThe": "Sunucuda çalıştırılacak komut",
+    "theHostsFileTrusts": "Sunucu listesi bu sunucu için şuna güveniyor:",
+    "forThisHostAndThe": "ancak sunucu başka bir anahtar sunuyor. Sunucuyu kontrol edin; anahtar doğruysa dosyadaki hostKey'i değiştirin.",
+    "itMatchesAccept": "Eşleşiyor: kabul et"
+  },
+  "enrollCommand": {
+    "startTheAgentWithThis": "Ajanı bu tek kullanımlık token'la başlatın",
+    "itWorksOnceUntilAnd": "{{value}} tarihine kadar bir kez çalışır ve yeniden gösterilmez.",
+    "done": "Tamam",
+    "onAServerThatReaches": "Sunuculara ve SIEM'e ulaşabilen herhangi bir sunucuda:",
+    "startTheAgent": "Ajanı başlatın",
+    "closingThisDialogHidesThe": "Bu pencereyi kapatmak token'ı gizler",
+    "ifItIsLostEnrol": "Kaybolursa ajanı satırından yeniden kaydedin."
+  },
+  "agentStatus": {
+    "online": "Çevrimiçi",
+    "offline": "Çevrimdışı",
+    "waitingToEnrol": "Kayıt bekleniyor",
+    "otherVersion": "Farklı sürüm"
+  },
+  "hostStatus": {
+    "reading": "Okunuyor",
+    "new": "Yeni",
+    "waitingForTheFirstRead": "İlk okuma bekleniyor",
+    "checkTheHostKey": "Sunucu anahtarını kontrol edin",
+    "hostKeyChanged": "Sunucu anahtarı değişti",
+    "unreachable": "Ulaşılamıyor",
+    "loginRefused": "Oturum açma reddedildi",
+    "timedOut": "Zaman aşımı",
+    "failed": "Başarısız"
+  },
+  "code": {
+    "copy": "Kopyala"
   }
 }

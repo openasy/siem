@@ -7,6 +7,8 @@ import { createGunzip } from "node:zlib";
 import { AuthError, identityOrigin, mergeOpenApi, sendProblem, type Auth, type Role } from "@openasy/auth";
 import { log } from "./log.ts";
 import { countRequest, renderMetrics } from "./metrics.ts";
+import type { Collector } from "./collect.ts";
+import type { HostsFileState } from "./hosts.ts";
 import type { ProductLink } from "./products.ts";
 import type { Level } from "./sigma.ts";
 import { LEVELS, parseLimit, SiemError, type ProblemCode, type Siem, type Status } from "./siem.ts";
@@ -31,18 +33,22 @@ export interface AppOptions {
   serveMetrics?: boolean;
   /** The install's OpenAsy products and their addresses, from OPENASY_PRODUCTS, for the product switcher. */
   products?: ProductLink[];
+  /** siem-agent instances and the hosts they read (ADR 0040, 0031). */
+  collector?: Collector;
+  /** The hosts file as last read, for the Hosts page; absent without OPENASY_HOSTS. */
+  hostsFile?: () => HostsFileState;
 }
 
-function metricsText(siem: Siem, version: string) {
+function metricsText(siem: Siem, version: string, collector?: Collector) {
   const s = siem.summary();
-  return renderMetrics(version, { events: s.events, eventsLastDay: s.eventsLastDay, rules: s.rules, signals: s.open });
+  return renderMetrics(version, { events: s.events, eventsLastDay: s.eventsLastDay, rules: s.rules, signals: s.open, collection: collector?.counts() });
 }
 
 /** Serves only /metrics, for a port that is not exposed with the rest (SIEM_METRICS_PORT). */
-export function createMetricsHandler(siem: Siem, version: string) {
+export function createMetricsHandler(siem: Siem, version: string, collector?: Collector) {
   return (req: IncomingMessage, res: ServerResponse) => {
     if (new URL(req.url ?? "/", "http://localhost").pathname !== "/metrics") return problem(res, 404, "not-found");
-    send(res, 200, metricsText(siem, version), "text/plain; version=0.0.4");
+    send(res, 200, metricsText(siem, version, collector), "text/plain; version=0.0.4");
   };
 }
 
@@ -151,8 +157,8 @@ function tokenMatches(header: string | undefined, expected: string | undefined):
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/** The role a route needs (ADR 0003), or "ingest" for scans sent from CI. */
-type Access = "none" | "ingest" | Role;
+/** The role a route needs (ADR 0003), "ingest" for events from shippers, or "agent" for siem-agent with its secret. */
+type Access = "none" | "ingest" | "agent" | Role;
 interface Ctx {
   req: IncomingMessage;
   res: ServerResponse;
@@ -161,12 +167,16 @@ interface Ctx {
   body: () => Promise<Record<string, unknown>>;
   /** Who made the request, for the audit trail of a decision. */
   actor: () => string;
+  /** The calling agent, on agent routes. */
+  agent: () => ReturnType<Collector["agentBySecret"]>;
 }
 interface Route {
   method: string;
   /** Path pattern; each `:name` matches one segment. */
   path: string;
   auth: Access;
+  /** The largest body the route reads, 256 KiB unless set. */
+  limit?: number;
   handle: (ctx: Ctx) => unknown;
 }
 
@@ -191,7 +201,25 @@ const text = (url: URL, name: string, max = 128) => {
   return v || undefined;
 };
 
-export function createApp({ db, siem, version, auth, adminToken, ingestToken, webDir, docsDir, openapi, serveMetrics = true, products = [] }: AppOptions) {
+export function createApp({
+  db,
+  siem,
+  version,
+  auth,
+  adminToken,
+  ingestToken,
+  webDir,
+  docsDir,
+  openapi,
+  serveMetrics = true,
+  products = [],
+  collector,
+  hostsFile,
+}: AppOptions) {
+  const collect = () => {
+    if (!collector) throw new SiemError(503, "not-configured", "Collection by siem-agent is not set up on this siem.");
+    return collector;
+  };
   // The served description includes /api/v1/auth from @openasy/auth, so the API reference documents sign-in too.
   const spec = openapi && JSON.stringify({ ...mergeOpenApi(openapi), info: { ...(openapi.info as object), version } });
   const noContent = (res: ServerResponse) => {
@@ -247,6 +275,40 @@ export function createApp({ db, siem, version, auth, adminToken, ingestToken, we
       },
     },
 
+    // siem-agent instances (ADR 0040, 0031): added here, enrolled with a one-time token.
+    { method: "GET", path: "/api/v1/agents", auth: "viewer", handle: () => ({ agents: collect().listAgents() }) },
+    { method: "POST", path: "/api/v1/agents", auth: "admin", handle: async ({ res, body }) => json(res, 201, collect().createAgent(await body())) },
+    { method: "GET", path: "/api/v1/agents/:id", auth: "viewer", handle: ({ params }) => collect().agent(params[0]!) },
+    { method: "DELETE", path: "/api/v1/agents/:id", auth: "admin", handle: ({ res, params }) => (collect().deleteAgent(params[0]!), noContent(res)) },
+    { method: "POST", path: "/api/v1/agents/:id/enroll-token", auth: "admin", handle: ({ params }) => collect().reEnroll(params[0]!) },
+    { method: "GET", path: "/api/v1/agents/:id/setup", auth: "viewer", handle: ({ params }) => collect().agentSetup(params[0]!) },
+    // The hosts agents read, from the install's hosts file (ADR 0052): their state, and the decisions on their keys.
+    {
+      method: "GET",
+      path: "/api/v1/hosts",
+      auth: "viewer",
+      handle: () => ({ hosts: collect().listHosts(), file: hostsFile?.() ?? null }),
+    },
+    { method: "GET", path: "/api/v1/hosts/:id", auth: "viewer", handle: ({ params }) => collect().host(params[0]!) },
+    { method: "POST", path: "/api/v1/hosts/:id/host-key", auth: "admin", handle: ({ params }) => collect().requestHostKey(params[0]!) },
+    {
+      method: "POST",
+      path: "/api/v1/hosts/:id/host-key/accept",
+      auth: "admin",
+      handle: async ({ params, body }) => collect().acceptHostKey(params[0]!, (await body()).fingerprint),
+    },
+    { method: "POST", path: "/api/v1/hosts/:id/read", auth: "editor", handle: ({ params }) => collect().requestRead(params[0]!) },
+    // What siem-agent calls. It asks; siem never connects to it.
+    { method: "POST", path: "/api/v1/agent/enroll", auth: "none", handle: async ({ body }) => collect().enroll(await body()) },
+    { method: "POST", path: "/api/v1/agent/work", auth: "agent", handle: async ({ agent, body }) => collect().work(agent(), await body()) },
+    {
+      method: "POST",
+      path: "/api/v1/agent/results",
+      auth: "agent",
+      limit: 64 * 1024 * 1024,
+      handle: async ({ res, agent, body }) => json(res, 202, collect().result(agent(), await body())),
+    },
+
     // Rules.
     { method: "GET", path: "/api/v1/rules", auth: "viewer", handle: ({ url }) => page("rules", siem.listRules(cursor(url), limit(url))) },
     { method: "POST", path: "/api/v1/rules", auth: "admin", handle: async ({ res, body, actor }) => json(res, 201, siem.createRule(await body(), actor())) },
@@ -281,7 +343,7 @@ export function createApp({ db, siem, version, auth, adminToken, ingestToken, we
 
   /** Returns who is calling, or null for the ingest token. */
   function authorize(req: IncomingMessage, access: Access): string | null {
-    if (access === "none") return null;
+    if (access === "none" || access === "agent") return null;
     if (access === "ingest" && tokenMatches(req.headers.authorization, ingestToken)) return null;
     if (tokenMatches(req.headers.authorization, adminToken)) return "admin token";
     if (access === "ingest") {
@@ -314,7 +376,7 @@ export function createApp({ db, siem, version, auth, adminToken, ingestToken, we
 
     if (path === "/metrics") {
       // Not even the web UI's fallback answers here when metrics have their own port.
-      if (serveMetrics) send(res, 200, metricsText(siem, version), "text/plain; version=0.0.4");
+      if (serveMetrics) send(res, 200, metricsText(siem, version, collector), "text/plain; version=0.0.4");
       else problem(res, 404, "not-found");
       return "/metrics";
     }
@@ -339,7 +401,15 @@ export function createApp({ db, siem, version, auth, adminToken, ingestToken, we
       try {
         const who = authorize(req, r.auth);
         const params = m.slice(1).map(decodeURIComponent);
-        const result = await r.handle({ req, res, url, params, body: () => readJson(req), actor: () => who ?? "unknown" });
+        const result = await r.handle({
+          req,
+          res,
+          url,
+          params,
+          body: () => readJson(req, r.limit),
+          actor: () => who ?? "unknown",
+          agent: () => collect().agentBySecret(req.headers.authorization),
+        });
         if (!res.headersSent && result !== undefined) json(res, 200, result);
       } catch (err) {
         if (err instanceof AuthError) {
@@ -377,7 +447,8 @@ export function createApp({ db, siem, version, auth, adminToken, ingestToken, we
       if (!res.headersSent) problem(res, 500, "internal-error");
     }
     countRequest(req.method ?? "GET", routeName, res.statusCode);
-    if (routeName !== "/healthz" && routeName !== "/metrics") {
+    // Agent calls arrive every few seconds; they are counted in /metrics, not logged one by one.
+    if (routeName !== "/healthz" && routeName !== "/metrics" && !routeName.startsWith("/api/v1/agent/")) {
       log("info", "request", { method: req.method, path: url(req), status: res.statusCode, ms: Math.round(performance.now() - started) });
     }
   };

@@ -12,14 +12,14 @@ describe("openDb", () => {
     first.close();
 
     const second = openDb(path);
-    expect(second.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get()).toEqual({ n: 1 });
+    expect(second.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get()).toEqual({ n: 4 });
     second.close();
   });
 
   it("keeps a signal when its rule is deleted", () => {
     const db = openDb(":memory:");
     db.exec(`INSERT INTO rules (id, title, level, source, created_at, updated_at) VALUES ('r', 'T', 'high', 's', 'now', 'now');
-      INSERT INTO signals VALUES ('s', 'r', 'T', 'high', 'web-1', 'new', NULL, NULL, 1, 'now', 'now', '[]');
+      INSERT INTO signals (id, rule_id, rule_title, severity, host, count, first_seen, last_seen, samples) VALUES ('s', 'r', 'T', 'high', 'web-1', 1, 'now', 'now', '[]');
       DELETE FROM rules`);
     expect(db.prepare("SELECT rule_id, rule_title FROM signals").get()).toEqual({ rule_id: null, rule_title: "T" });
   });

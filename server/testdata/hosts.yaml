@@ -1,0 +1,20 @@
+# The same file is in every product that reads OPENASY_HOSTS (ADR 0052), so their tests read the same entries. The
+# hostKey is the fingerprint of HOST_KEY in test-app.ts.
+hosts:
+  - name: bastion
+    address: 10.0.0.2
+    agent: dc1
+  - name: web-1
+    address: 10.0.0.5
+    containers: true
+    jump: bastion
+    agent: dc1
+    hostKey: SHA256:PDOhaQiW49e9hQXf81r2bgjWlUS0+xzcwzCeUeVWhZo
+    tags: { env: prod }
+  - name: db-1
+    address: 10.0.0.6
+    port: 2222
+    user: reader
+    auth: key
+    keyFile: db-1.key # read by the agent from its key folder
+    agent: dc1

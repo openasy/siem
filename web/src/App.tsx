@@ -35,7 +35,7 @@ import {
 } from "@openasy/ui";
 import { AccountSettings, AuthGate, MembersSettings, SignInSettings, TokensSettings, useAccountMenu, useAuth, useInstallBrand } from "@openasy/auth/react";
 import colophon from "virtual:openasy-colophon";
-import { Bell, FlaskConical, KeyRound, LogIn, LogOut, Plus, ScrollText, ShieldCheck, Trash2, UserRound, Users, X } from "lucide-react";
+import { Bell, Bot, FlaskConical, KeyRound, LogIn, LogOut, Plus, ScrollText, Server, ShieldCheck, Trash2, UserRound, Users, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   api,
@@ -51,10 +51,11 @@ import {
   type Status,
   type Summary,
 } from "./api.ts";
+import { AgentsPage, HostsPage } from "./hosts.tsx";
 import { useT, type T } from "./i18n.ts";
 import { search } from "./search.ts";
 
-const PAGES = ["rules", "events", "setup", "account", "members", "signin", "tokens", "about"] as const;
+const PAGES = ["rules", "events", "hosts", "agents", "setup", "account", "members", "signin", "tokens", "about"] as const;
 type Route = { page: "signals" | (typeof PAGES)[number] };
 /** The first path segments that are pages of this UI, for followLinks. */
 export const PATHS = ["signals", ...PAGES];
@@ -80,7 +81,7 @@ function useApi() {
     [expired, refresh],
   );
 }
-type Call = ReturnType<typeof useApi>;
+export type Call = ReturnType<typeof useApi>;
 
 const LEVELS: Level[] = ["critical", "high", "medium", "low"];
 const STATUS_LABEL = (t: T): Record<Status, string> => ({
@@ -131,6 +132,26 @@ function EventLine({ e }: { e: Event }) {
 
 // ---------------------------------------------------------------- Signals
 
+/** The incident a signal opened in Incidents: its key as a link, or that it waits and why. */
+function IncidentLine({ incident }: { incident: NonNullable<Signal["incident"]> }) {
+  const t = useT();
+  return (
+    <p className="m-0 flex flex-wrap items-center gap-1.5 text-xs">
+      <span className="font-medium">{t("signalPanel.incident")}</span>
+      {incident.state === "opened" && incident.url ? (
+        <a href={incident.url} className="font-mono">
+          {incident.key}
+        </a>
+      ) : (
+        <StatusBadge tone={incident.state === "failed" ? "danger" : "warning"}>
+          {incident.state === "failed" ? t("signalPanel.incidentFailed") : t("signalPanel.incidentPending")}
+        </StatusBadge>
+      )}
+      {incident.state !== "opened" && incident.error && <span className="text-fg-muted">{incident.error}</span>}
+    </p>
+  );
+}
+
 function SignalPanel({ id, call, onClose, onChanged }: { id: string; call: Call; onClose: () => void; onChanged: () => void }) {
   const ago = useAgo();
   const t = useT();
@@ -179,6 +200,7 @@ function SignalPanel({ id, call, onClose, onChanged }: { id: string; call: Call;
             {signal.changedBy ? ` · ${signal.changedBy}` : ""}
           </p>
           {signal.reason && <p className="m-0">{signal.reason}</p>}
+          {signal.incident && <IncidentLine incident={signal.incident} />}
           <div className="flex flex-col gap-1">
             <span className="text-2xs font-medium tracking-wider text-fg-muted uppercase">{t("signalPanel.firstEvents")}</span>
             <ul className="siem-list flex flex-col gap-1.5">
@@ -254,7 +276,8 @@ function SignalsPage({ call, summary, reload }: { call: Call; summary?: Summary;
   const [host, setHost] = useState(() => new URLSearchParams(location.search).get("host") ?? "");
   const [rows, setRows] = useState<Signal[]>();
   const [more, setMore] = useState<string>();
-  const [open, setOpen] = useState<Signal | null>(null);
+  // An incident links to its signal with ?signal=.
+  const [open, setOpen] = useState<string | null>(() => new URLSearchParams(location.search).get("signal"));
 
   const query = useCallback(
     (cursor?: string) => {
@@ -377,8 +400,8 @@ function SignalsPage({ call, summary, reload }: { call: Call; summary?: Summary;
             rows={rows ?? []}
             loading={!rows}
             getRowId={(x) => x.id}
-            onRowClick={(x) => setOpen(x)}
-            activeRowId={open?.id}
+            onRowClick={(x) => setOpen(x.id)}
+            activeRowId={open ?? undefined}
             minWidth={820}
             pageSize={50}
             empty={
@@ -400,7 +423,7 @@ function SignalsPage({ call, summary, reload }: { call: Call; summary?: Summary;
         </Panel>
         {open && (
           <SignalPanel
-            id={open.id}
+            id={open}
             call={call}
             onClose={() => setOpen(null)}
             onChanged={() => {
@@ -490,6 +513,12 @@ function RulesPage({ call, reload }: { call: Call; reload: () => void }) {
       cell: (r) => (
         <span className="flex min-w-0 flex-col">
           <span className="siem-wrap text-sm font-medium">{r.title}</span>
+          {(r.kind === "correlation" || r.name) && (
+            <span className="flex flex-wrap items-center gap-1.5">
+              {r.kind === "correlation" && <Badge tone="info">{t("rulesPage.correlation")}</Badge>}
+              {r.name && <span className="font-mono text-xs text-fg-muted">{r.name}</span>}
+            </span>
+          )}
           {r.description && <span className="siem-clamp text-xs text-fg-muted">{r.description}</span>}
           {r.lastError && <span className="text-xs text-danger">{r.lastError}</span>}
         </span>
@@ -499,7 +528,7 @@ function RulesPage({ call, reload }: { call: Call; reload: () => void }) {
     {
       id: "last",
       header: t("rulesPage.lastMatch"),
-      cell: (r) => <span className="text-xs whitespace-nowrap">{r.lastMatchAt ? ago(r.lastMatchAt) : "never"}</span>,
+      cell: (r) => <span className="text-xs whitespace-nowrap">{r.lastMatchAt ? ago(r.lastMatchAt) : t("rulesPage.never")}</span>,
     },
     {
       id: "on",
@@ -586,7 +615,10 @@ function RulesPage({ call, reload }: { call: Call; reload: () => void }) {
           <div className="flex flex-col gap-1 text-sm">
             <span>
               {t("rulesPage.wouldHaveMatched")} {t("plurals.event", { count: result.matches })} {t("rulesPage.ofTheNewest")} {result.evaluated}
-              {t("rulesPage.on2")} {t("plurals.host", { count: result.hosts })}.
+              {result.rule.kind === "correlation"
+                ? t("rulesPage.inGroups", { count: result.hosts })
+                : `${t("rulesPage.on2")} ${t("plurals.host", { count: result.hosts })}`}
+              .
             </span>
             <ul className="siem-list flex flex-col gap-1.5">
               {result.events.map((e) => (
@@ -806,6 +838,8 @@ function Product() {
     { id: "signals", label: msg("product.signals"), icon: Bell, count: summary ? Object.values(summary.open).reduce((a, b) => a + b, 0) : undefined },
     { id: "rules", label: msg("product.rules"), icon: ShieldCheck, count: summary?.rules.total },
     { id: "events", label: msg("product.events"), icon: ScrollText },
+    { id: "hosts", label: msg("product.hosts"), icon: Server },
+    { id: "agents", label: msg("product.agents"), icon: Bot },
   ];
   const footerNav = [
     ...(can("admin")
@@ -848,6 +882,10 @@ function Product() {
         <RulesPage call={call} reload={reload} />
       ) : route.page === "events" ? (
         <EventsPage key={location.search} call={call} />
+      ) : route.page === "hosts" ? (
+        <HostsPage call={call} />
+      ) : route.page === "agents" ? (
+        <AgentsPage call={call} />
       ) : route.page === "account" || route.page === "members" || route.page === "signin" || route.page === "tokens" ? (
         <SettingsPage page={route.page} />
       ) : (

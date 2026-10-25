@@ -18,7 +18,10 @@
     "save": "Speichern",
     "reason": "Grund",
     "required": "Erforderlich.",
-    "optional": "Optional."
+    "optional": "Optional.",
+    "incident": "Vorfall",
+    "incidentPending": "Wird eröffnet",
+    "incidentFailed": "Nicht eröffnet"
   },
   "signalsPage": {
     "severity": "Schweregrad",
@@ -76,7 +79,11 @@
     "sigmaRule": "Sigma-Regel",
     "wouldHaveMatched": "Hätte getroffen:",
     "ofTheNewest": "von den neuesten",
-    "on2": ", auf"
+    "on2": ", auf",
+    "correlation": "Korrelation",
+    "never": "nie",
+    "inGroups_one": ", in {{count}} Gruppe",
+    "inGroups_other": ", in {{count}} Gruppen"
   },
   "eventsPage": {
     "time": "Zeit",
@@ -124,7 +131,9 @@
     "members": "Mitglieder",
     "signIn": "Anmeldung",
     "apiTokens": "API-Tokens",
-    "account": "Konto"
+    "account": "Konto",
+    "hosts": "Hosts",
+    "agents": "Agents"
   },
   "statusLabel": {
     "falsePositive": "Fehlalarm"
@@ -148,5 +157,94 @@
   },
   "common": {
     "loading": "Wird geladen…"
+  },
+  "hostsPage": {
+    "host": "Host",
+    "address": "Adresse",
+    "status": "Status",
+    "events": "Ereignisse",
+    "lastRead": "Zuletzt gelesen",
+    "notReadable": "Nicht lesbar:",
+    "agent": "Agent",
+    "actions": "Aktionen",
+    "readNow": "Jetzt lesen",
+    "hosts": "Hosts",
+    "description": "Die Server der Hostdatei der Installation, die siem-agent über SSH liest: die Sicherheitsereignisse in ihrem System-Journal, etwa Anmeldungen, sudo und Kontoänderungen. Auf ihnen wird nichts installiert.",
+    "addAnAgentFirst": "Fügen Sie zuerst einen Agent hinzu",
+    "addAnAgent": "Agent hinzufügen",
+    "agentIsInstalledOnce": "siem-agent wird einmal pro Netz installiert und liest die Hosts dort. Hosts, die ihre Ereignisse bereits mit einem Shipper senden, brauchen keinen Agent.",
+    "theHostsFromItsLast": "{{error}} Die Hosts aus der letzten gültigen Fassung bleiben, bis die Datei korrigiert ist ({{path}}).",
+    "theHostsFileIsNot": "Die Hostdatei wird nicht angewendet",
+    "theHostsFileHasSomething": "In der Hostdatei ist etwas zu korrigieren",
+    "noHostsYetPrepareOne": "Bereiten Sie einen Host mit den Befehlen unter Agents vor und führen Sie ihn dann in der Hostdatei der Installation (OPENASY_HOSTS) auf, die auch Infrastructure, Logs und die anderen Produkte lesen, etwa:",
+    "noHostsFile": "SIEM liest die Hosts aus der Hostdatei der Installation: Setzen Sie OPENASY_HOSTS darauf und führen Sie die Hosts auf, etwa:",
+    "noHostsYet": "Noch keine Hosts",
+    "linesForTheHostsFile": "Zeilen für die Hostdatei"
+  },
+  "agentsPage": {
+    "agent": "Agent",
+    "status": "Status",
+    "hosts": "Hosts",
+    "version": "Version",
+    "caFingerprint": "CA-Fingerabdruck",
+    "lastSeen": "Zuletzt gesehen",
+    "actions": "Aktionen",
+    "enrolAgainItsSecretStops": "{{name}} erneut registrieren? Sein Secret funktioniert nicht mehr; ändert sich seine CA, müssen die Hosts, die er liest, der neuen vertrauen.",
+    "enrolAgain": "Erneut registrieren",
+    "removeAgent": "{{name}} entfernen?",
+    "remove": "Entfernen",
+    "agents": "Agents",
+    "description": "siem-agent wird einmal installiert, neben SIEM oder in einem anderen Netz, und liest die Hosts dort über SSH mit 5-Minuten-Zertifikaten. Er behält seine SSH-Zertifizierungsstelle; SIEM sagt nur, welcher Host von wo gelesen wird.",
+    "addAgent": "Agent hinzufügen",
+    "addAnAgent": "Agent hinzufügen",
+    "nameItAfterWhereIt": "Benennen Sie ihn danach, wo er läuft. Sie erhalten ein Einmal-Token, um ihn zu starten.",
+    "cancel": "Abbrechen",
+    "name": "Name",
+    "noAgentsYet": "Noch keine Agents",
+    "prepareAHost": "Host vorbereiten",
+    "runAsRootOnEach": "Als root auf jedem Host ausführen, den {{name}} liest. Es legt das Konto openasy an, vertraut der CA des Agents nur für dieses Konto und erlaubt ihm, das System-Journal zu lesen. Sonst wird nichts installiert.",
+    "forHostsReadBy": "Für Hosts, die gelesen werden von",
+    "commandsToPrepareAHost": "Befehle zum Vorbereiten eines Hosts",
+    "orWhereSshdConfigCannot": "Oder, wo sshd_config nicht geändert werden kann, ein fester Schlüssel, der kein TTY öffnen und nichts weiterleiten kann:",
+    "authorizedKeysLine": "Zeile für authorized_keys",
+    "caFingerprintIs": "CA-Fingerabdruck {{caFingerprint}}"
+  },
+  "keyCheck": {
+    "presentsAnotherKey": "{{name}} legt einen anderen Schlüssel vor",
+    "checkTheKeyOf": "Schlüssel von {{name}} prüfen",
+    "onTheHostThisMust": "Auf dem Host muss dies denselben Fingerabdruck ausgeben:",
+    "commandToRunOnThe": "Auf dem Host auszuführender Befehl",
+    "theHostsFileTrusts": "Die Hostdatei vertraut",
+    "forThisHostAndThe": "für diesen Host, und der Host legt einen anderen Schlüssel vor. Prüfen Sie den Host; wenn der Schlüssel stimmt, ändern Sie hostKey in der Datei.",
+    "itMatchesAccept": "Er stimmt überein: akzeptieren"
+  },
+  "enrollCommand": {
+    "startTheAgentWithThis": "Starten Sie den Agent mit diesem Einmal-Token",
+    "itWorksOnceUntilAnd": "Es funktioniert einmal, bis {{value}}, und wird nicht erneut angezeigt.",
+    "done": "Fertig",
+    "onAServerThatReaches": "Auf einem beliebigen Server, der die Hosts und SIEM erreicht:",
+    "startTheAgent": "Agent starten",
+    "closingThisDialogHidesThe": "Beim Schließen dieses Dialogs wird das Token ausgeblendet",
+    "ifItIsLostEnrol": "Geht es verloren, registrieren Sie den Agent über seine Zeile erneut."
+  },
+  "agentStatus": {
+    "online": "Online",
+    "offline": "Offline",
+    "waitingToEnrol": "Wartet auf Registrierung",
+    "otherVersion": "Andere Version"
+  },
+  "hostStatus": {
+    "reading": "Wird gelesen",
+    "new": "Neu",
+    "waitingForTheFirstRead": "Warten auf das erste Lesen",
+    "checkTheHostKey": "Host-Schlüssel prüfen",
+    "hostKeyChanged": "Host-Schlüssel geändert",
+    "unreachable": "Nicht erreichbar",
+    "loginRefused": "Login abgelehnt",
+    "timedOut": "Zeitüberschreitung",
+    "failed": "Fehlgeschlagen"
+  },
+  "code": {
+    "copy": "Kopieren"
   }
 }

@@ -50,13 +50,70 @@ the modifiers `contains`, `startswith`, `endswith`, `re` and `all`; wildcards `*
 the characters themselves); conditions with `and`, `or`, `not`, parentheses, and `1 of`, `any of` and `all of` over
 names, patterns (`filter_*`) and `them`. Text is compared without regard to case; `re` is case-sensitive.
 `level` is critical, high, medium, low or informational (shown as low). Not supported yet, and said so when you try:
-aggregations (`| count()`), `timeframe`, and other modifiers such as `base64` or `cidr`.
+aggregations (`| count()`) and `timeframe`, which correlations below replace, and other modifiers such as `base64`
+or `cidr`.
 
 The YAML reader is built in and covers what Sigma rules use: maps, lists, quoted and block scalars, inline lists and
 comments. Anchors, tags and flow maps are refused; write the rule as JSON instead if you need something else. Regular
 expressions that can backtrack without end, such as `(a+)+`, are refused.
 
 A rule that fails on an event is noted on the rule (`lastError`) and skipped; events are always kept.
+
+## Correlations
+
+A rule with `correlation` instead of `detection` is a [Sigma correlation](https://github.com/SigmaHQ/sigma-specification):
+it reads the matches of other rules, named by their `name` or `id`, and makes a signal per group when its condition holds.
+
+```yaml
+title: Failed SSH login
+name: failed_ssh_login
+level: low
+detection:
+  selection:
+    source: sshd
+    message|contains: 'Failed password'
+  condition: selection
+```
+
+```yaml
+title: Many failed SSH logins on one host
+level: high
+correlation:
+  type: event_count
+  rules: failed_ssh_login
+  group-by:
+    - host
+  timespan: 10m
+  condition:
+    gte: 20
+```
+
+- `event_count` counts the events the rules match, each event once; `value_count` counts the distinct values of
+  `condition.field`. Both take `gt`, `gte` or `eq`.
+- `temporal` wants every rule to match within the timespan, in any order; `temporal_ordered` in the order listed.
+- `group-by` lists the fields that make a group; without it, all events are one group. The signal is named after the
+  group: the host when that is the only field, or `field=value` pairs.
+- The timespan is 1s to 1d. Matches are kept for a day for this, in the product's SQLite file.
+- A rule a correlation reads is matched for it even when switched off, so a rule that means little alone, such as one
+  failed login, can feed a correlation without making signals of its own. Switched on, it makes its own as well, which
+  is how `generate` is decided here.
+- A correlation is a signal like any other: it opens an incident at the severity set, and is worked and closed the same.
+- Not supported yet, and said so: `lt` and `lte` (waiting for fewer events), `aliases`, `value_sum` and the other value
+  types, and correlations of correlations. A rule a correlation reads cannot be deleted while it does.
+
+## Incidents
+
+With `SIEM_INCIDENTS_TOKEN`, a new signal at `SIEM_INCIDENTS_MIN_SEVERITY` or above (high by default) opens an incident
+in [OpenAsy Incidents](https://github.com/openasy/incidents), with a link back to the signal as its evidence (ADR 0041).
+Make the token in Incidents under Settings, API tokens, with the editor role: it opens and updates incidents and does
+nothing else. siem calls Incidents at `SIEM_INCIDENTS_URL`, such as `http://incidents:8080` next to it, or where
+`OPENASY_PRODUCTS` says people open it.
+
+- One signal is one incident. More events of the same signal add nothing; a signal that starts again after its window
+  is a new signal and a new incident.
+- Events are answered before Incidents is called, so a slow or stopped Incidents never holds them back. A signal whose
+  incident could not be opened says why, and is tried again every minute for a day.
+- The signal shows its incident's key, such as INC-12, linked to Incidents; the incident links to the signal.
 
 ## Run
 
@@ -83,6 +140,9 @@ backups.
 | `SIEM_DB` | `/data/siem.db` | SQLite file (WAL), on the `/data` volume |
 | `SIEM_RETENTION_DAYS` | `30` | Events, and closed signals, older than this are deleted |
 | `SIEM_SIGNAL_WINDOW_MINUTES` | `60` | Matches of one rule on one host closer together than this are one signal |
+| `SIEM_INCIDENTS_TOKEN` | | An Incidents API token with the editor role: severe signals open incidents |
+| `SIEM_INCIDENTS_URL` | the `incidents` entry of `OPENASY_PRODUCTS` | Where siem calls Incidents, such as `http://incidents:8080` |
+| `SIEM_INCIDENTS_MIN_SEVERITY` | `high` | The lowest severity of a signal that opens an incident: critical, high, medium or low |
 | `SIEM_METRICS_PORT` | | Serve `/metrics` on this port only (ADR 0026) |
 | `SIEM_HEADLESS` | `false` | `true` serves only the API |
 | `SIEM_PASSWORD_SIGN_IN`, `OPENASY_OIDC_*` | | Sign-in, as in every OpenAsy product ([@openasy/auth](https://github.com/openasy/auth)). Owners can also add identity providers under Settings, Sign-in |

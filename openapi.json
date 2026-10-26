@@ -2,7 +2,7 @@
   "openapi": "3.1.1",
   "info": {
     "title": "OpenAsy SIEM API",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "summary": "Security events, Sigma detection rules and the signals they raise.",
     "description": "Every screen of siem uses this API, and so can your shippers and scripts (ADR 0014). Within `/api/v1` changes are additive only; anything removed is deprecated first (ADR 0024). Errors use Problem Details (RFC 9457).\n\nSend events with `SIEM_INGEST_TOKEN`. Everything else takes the session of a signed-in person or an API token, and each operation names the role it needs (`x-openasy-role`: viewer, editor, admin; ADR 0003).\n\nSign-in, members and API tokens are under `/api/v1/auth`, provided by [@openasy/auth](https://github.com/openasy/auth#routes).",
     "license": {

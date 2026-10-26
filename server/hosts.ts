@@ -1,7 +1,8 @@
 // The install's servers from a file, the same file for every product that works with servers (ADR 0052). Each product
 // reads what it needs: Infrastructure and Logs reach every entry over SSH; Vulnerabilities, Posture, Malware and
-// Backups show which servers they have nothing for. This file is the same in each of those products; keep the copies
-// in step (server/testdata/hosts.yaml is shared too).
+// Backups show which servers they have nothing for. Its bmcs: are the servers' management controllers, which
+// Infrastructure reads over Redfish (ADR 0055); the others check them and leave them alone. This file is the same in
+// each of those products; keep the copies in step (server/testdata/hosts.yaml is shared too).
 import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { parse } from "yaml";
@@ -28,6 +29,27 @@ export interface HostEntry {
   tags: Record<string, string>;
 }
 
+/** A server's management controller (iDRAC, iLO, XClarity, IPMI with Redfish), read over Redfish (ADR 0055). */
+export interface BmcEntry {
+  /** Unique among the BMCs, and how the entry is found again when the file changes. */
+  name: string;
+  address: string;
+  port: number;
+  /** A read-only account on the BMC. */
+  user: string;
+  /** A file in the agent's key folder that holds the account's password, read by the agent alone. */
+  passwordFile: string;
+  /** The server in hosts: whose board this is, by its name. */
+  server: string | null;
+  agent: string | null;
+  /**
+   * The SHA-256 fingerprint of the BMC's TLS certificate, as openssl x509 -fingerprint -sha256 prints it: trusted when
+   * the BMC presents it. first: the certificate it presents the first time is trusted. Unset: an admin accepts it.
+   */
+  certificate: string | null;
+  tags: Record<string, string>;
+}
+
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
 // Never starts with "-": a value that ssh could read as an option.
 const ADDRESS = /^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$|^\[[0-9a-fA-F:]+\]$/;
@@ -37,18 +59,29 @@ const TAG = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,62}$/;
 // A file name, never a path: no slash, so the agent never reads outside its key folder, and no leading dot.
 const KEY_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const KEYS = ["name", "address", "port", "user", "auth", "keyFile", "containers", "jump", "agent", "hostKey", "tags"];
+// BMC accounts are not Unix accounts: iDRAC and iLO allow dots, dashes and @ too.
+const BMC_USER = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$/;
+const CERTIFICATE = /^([0-9A-Fa-f]{2}:){31}[0-9A-Fa-f]{2}$/;
+const BMC_KEYS = ["name", "address", "port", "user", "passwordFile", "server", "agent", "certificate", "tags"];
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 
-/** Reads the file's text. Throws with the entry and field at fault, so one message says what to fix. */
-export function parseHosts(text: string): HostEntry[] {
+const tagsOk = (t: unknown) =>
+  t === undefined || (isObj(t) && Object.keys(t).length <= 32 && Object.entries(t).every(([k, v]) => TAG.test(k) && typeof v === "string" && v.length <= 128));
+
+/** The servers in the file's text. Throws with the entry and field at fault, so one message says what to fix. */
+export const parseHosts = (text: string): HostEntry[] => parseInventory(text).hosts;
+
+/** The servers and their BMCs. The whole file is checked, so every product refuses the same mistakes. */
+export function parseInventory(text: string): { hosts: HostEntry[]; bmcs: BmcEntry[] } {
   let doc: unknown;
   try {
     doc = parse(text);
   } catch (err) {
     throw new Error(`Not valid YAML: ${(err as Error).message.split("\n")[0]}`);
   }
-  if (doc === null || doc === undefined) return [];
-  if (!isObj(doc) || Object.keys(doc).some((k) => k !== "hosts")) throw new Error("The file holds one list, hosts:, and nothing else.");
+  if (doc === null || doc === undefined) return { hosts: [], bmcs: [] };
+  if (!isObj(doc) || Object.keys(doc).some((k) => k !== "hosts" && k !== "bmcs"))
+    throw new Error("The file holds two lists, hosts: and bmcs:, and nothing else.");
   const list = doc.hosts ?? [];
   if (!Array.isArray(list)) throw new Error("hosts must be a list.");
   if (list.length > 5000) throw new Error("hosts holds at most 5000 entries.");
@@ -80,12 +113,7 @@ export function parseHosts(text: string): HostEntry[] {
     if (h.hostKey !== undefined && h.hostKey !== null && h.hostKey !== "first" && (typeof h.hostKey !== "string" || !FINGERPRINT.test(h.hostKey))) {
       throw new Error(`${where}.hostKey is a fingerprint as ssh-keygen -lf prints it, such as SHA256:${"A".repeat(43)}, or first to trust the first key.`);
     }
-    if (
-      h.tags !== undefined &&
-      (!isObj(h.tags) || Object.keys(h.tags).length > 32 || Object.entries(h.tags).some(([k, v]) => !TAG.test(k) || typeof v !== "string" || v.length > 128))
-    ) {
-      throw new Error(`${where}.tags is a map of up to 32 name: value texts, such as { env: prod }.`);
-    }
+    if (!tagsOk(h.tags)) throw new Error(`${where}.tags is a map of up to 32 name: value texts, such as { env: prod }.`);
     return {
       name: h.name,
       address: h.address,
@@ -108,7 +136,55 @@ export function parseHosts(text: string): HostEntry[] {
     if (j.name === h.name) throw new Error(`${h.name}.jump: a host cannot be its own jump host.`);
     if (j.jump) throw new Error(`${h.name}.jump: ${j.name} is reached through ${j.jump} itself; a jump host must be reachable directly.`);
   }
-  return hosts;
+  return { hosts, bmcs: parseBmcs(doc.bmcs ?? [], byName) };
+}
+
+function parseBmcs(list: unknown, hosts: Map<string, HostEntry>): BmcEntry[] {
+  if (!Array.isArray(list)) throw new Error("bmcs must be a list.");
+  if (list.length > 5000) throw new Error("bmcs holds at most 5000 entries.");
+  const seen = new Set<string>();
+  return list.map((b, i): BmcEntry => {
+    const at = `bmcs[${i}]`;
+    if (!isObj(b)) throw new Error(`${at} must be a map with at least name, address and passwordFile.`);
+    const extra = Object.keys(b).filter((k) => !BMC_KEYS.includes(k));
+    if (extra.length) throw new Error(`${at}: unknown ${extra.join(", ")}; a BMC takes ${BMC_KEYS.join(", ")}.`);
+    if (typeof b.name !== "string" || !NAME.test(b.name)) throw new Error(`${at}.name is required: letters, digits, dots, dashes and underscores, up to 63.`);
+    if (seen.has(b.name.toLowerCase())) throw new Error(`${at}.name: ${b.name} is in bmcs twice.`);
+    seen.add(b.name.toLowerCase());
+    const where = `${at} (${b.name})`;
+    if (typeof b.address !== "string" || !ADDRESS.test(b.address)) throw new Error(`${where}.address is required: a host name or IP address.`);
+    if (b.port !== undefined && (!Number.isInteger(b.port) || (b.port as number) < 1 || (b.port as number) > 65535))
+      throw new Error(`${where}.port is 1 to 65535.`);
+    if (b.user !== undefined && (typeof b.user !== "string" || !BMC_USER.test(b.user)))
+      throw new Error(`${where}.user is the BMC account: letters, digits, dots, dashes, underscores and @, up to 64.`);
+    if (typeof b.passwordFile !== "string" || !KEY_FILE.test(b.passwordFile))
+      throw new Error(`${where}.passwordFile is required: a file name in the agent's key folder, such as db-1-bmc: no folders, up to 128.`);
+    for (const k of ["server", "agent"] as const) {
+      if (b[k] !== undefined && b[k] !== null && (typeof b[k] !== "string" || !NAME.test(b[k] as string)))
+        throw new Error(`${where}.${k} is a name: letters, digits, dots, dashes and underscores, up to 63.`);
+    }
+    if (typeof b.server === "string" && !hosts.has(b.server)) throw new Error(`${where}.server: ${b.server} is not a host in the file.`);
+    if (
+      b.certificate !== undefined &&
+      b.certificate !== null &&
+      b.certificate !== "first" &&
+      (typeof b.certificate !== "string" || !CERTIFICATE.test(b.certificate))
+    )
+      throw new Error(`${where}.certificate is a SHA-256 fingerprint as openssl x509 -fingerprint -sha256 prints it, such as ${"AB:".repeat(31)}AB, or first.`);
+    if (!tagsOk(b.tags)) throw new Error(`${where}.tags is a map of up to 32 name: value texts, such as { env: prod }.`);
+    return {
+      name: b.name,
+      address: b.address,
+      port: (b.port as number | undefined) ?? 443,
+      user: (b.user as string | undefined) ?? "openasy",
+      passwordFile: b.passwordFile,
+      server: (b.server as string | null | undefined) ?? null,
+      agent: (b.agent as string | null | undefined) ?? null,
+      certificate:
+        typeof b.certificate === "string" && b.certificate !== "first" ? b.certificate.toUpperCase() : ((b.certificate as "first" | null | undefined) ?? null),
+      tags: (b.tags as Record<string, string> | undefined) ?? {},
+    };
+  });
 }
 
 /**
@@ -140,13 +216,13 @@ export interface HostsFileState {
 
 /**
  * Reads the file now and whenever it changes (checked every `everyMs`, by size, time and content), and hands each new
- * list to `apply`, which returns warnings or throws to refuse it. While the last apply had warnings, such as a host
+ * list, and its BMCs, to `apply`, which returns warnings or throws to refuse it. While the last apply had warnings, such as a host
  * whose agent is not enrolled yet, the same list is applied again at every check, so it is picked up once it can be.
  * A file that cannot be read or applied leaves the last good list in place. `stop()` ends the polling.
  */
 export function watchHosts(
   path: string,
-  apply: (hosts: HostEntry[]) => string[],
+  apply: (hosts: HostEntry[], bmcs: BmcEntry[]) => string[],
   { everyMs = 60_000, onChange }: { everyMs?: number; onChange?: (state: HostsFileState) => void } = {},
 ) {
   const state: HostsFileState = { path, appliedAt: null, entries: 0, error: null, warnings: [] };
@@ -167,9 +243,9 @@ export function watchHosts(
     const changed = stamp !== seen;
     seen = stamp;
     try {
-      const hosts = parseHosts(text);
+      const { hosts, bmcs } = parseInventory(text);
       const before = state.warnings.join("\n");
-      state.warnings = apply(hosts);
+      state.warnings = apply(hosts, bmcs);
       Object.assign(state, { appliedAt: new Date().toISOString(), entries: hosts.length, error: null });
       if (changed || before !== state.warnings.join("\n")) onChange?.(state);
     } catch (err) {

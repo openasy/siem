@@ -18,3 +18,17 @@ hosts:
     auth: key
     keyFile: db-1.key # read by the agent from its key folder
     agent: dc1
+# The servers' management controllers, read over Redfish by Infrastructure (ADR 0055).
+bmcs:
+  - name: db-1-idrac
+    address: 10.0.9.6
+    server: db-1
+    passwordFile: db-1-bmc # read by the agent from its key folder
+    agent: dc1
+  - name: spare-ilo
+    address: bmc-spare.example.com
+    port: 8443
+    user: reader@example.com
+    passwordFile: spare-ilo
+    certificate: ab:cd:ef:01:23:45:67:89:ab:cd:ef:01:23:45:67:89:ab:cd:ef:01:23:45:67:89:ab:cd:ef:01:23:45:67:89
+    tags: { rack: r2 }

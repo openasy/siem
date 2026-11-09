@@ -78,7 +78,7 @@ import {
   type Summary,
 } from "./api.ts";
 import { AgentsPage, HostsPage } from "./hosts.tsx";
-import { useT, type T } from "./i18n.ts";
+import { useT, type T, viewerLocale, setViewerLocale } from "./i18n.ts";
 import { search } from "./search.ts";
 
 const PAGES = ["rules", "events", "hosts", "agents", "setup", "account", "members", "signin", "tokens", "about"] as const;
@@ -147,7 +147,7 @@ function EventLine({ e }: { e: Event }) {
   return (
     <li className="flex flex-col gap-1 rounded-md border border-line p-2">
       <span className="flex flex-wrap items-center gap-1.5 text-xs">
-        <span className="text-fg-muted">{new Date(e.time).toLocaleString()}</span>
+        <span className="text-fg-muted">{new Date(e.time).toLocaleString(viewerLocale())}</span>
         {e.host && <Badge mono>{e.host}</Badge>}
         {e.source && <Badge>{e.source}</Badge>}
       </span>
@@ -353,7 +353,7 @@ function OverviewPage({ call, summary }: { call: Call; summary?: Summary }) {
             <TimeSeriesChart
               label={t("signalsPage.eventsInEachHour")}
               series={[{ id: "events", name: t("signalsPage.events"), data: s.hours.map((h) => h.events) }]}
-              labels={s.hours.map((h) => new Date(h.start).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false }))}
+              labels={s.hours.map((h) => new Date(h.start).toLocaleTimeString(viewerLocale(), { hour: "2-digit", minute: "2-digit", hour12: false }))}
               height={190}
               xTicks={6}
             />
@@ -373,7 +373,7 @@ function OverviewPage({ call, summary }: { call: Call; summary?: Summary }) {
             <StackedBarChart
               label={t("signalsPage.newSignalsEachDayBy")}
               categories={s.days.map((d) =>
-                new Date(`${d.start}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }),
+                new Date(`${d.start}T00:00:00Z`).toLocaleDateString(viewerLocale(), { month: "short", day: "numeric", timeZone: "UTC" }),
               )}
               segments={[...LEVELS].reverse().map((l) => ({ id: l, name: SEVERITY_META[l].label, color: color(l) }))}
               values={s.days.map((d) => [...LEVELS].reverse().map((l) => d.signals[l]))}
@@ -802,7 +802,7 @@ function EventsPage({ call }: { call: Call }) {
       header: t("eventsPage.time"),
       width: "180px",
       sortValue: (e) => e.time,
-      cell: (e) => <span className="text-xs whitespace-nowrap">{new Date(e.time).toLocaleString()}</span>,
+      cell: (e) => <span className="text-xs whitespace-nowrap">{new Date(e.time).toLocaleString(viewerLocale())}</span>,
     },
     { id: "host", header: t("eventsPage.host"), cell: (e) => <span className="font-mono text-xs">{e.host ?? "–"}</span> },
     { id: "source", header: t("eventsPage.source"), cell: (e) => e.source ?? "–" },
@@ -1036,6 +1036,7 @@ export function App() {
   const installBrand = useInstallBrand();
   const [theme] = useThemePreference();
   const [locale] = useLocalePreference();
+  setViewerLocale(locale);
   return (
     // The install's brand from config/brand.env (ADR 0053); OpenAsy's own look where it sets none.
     <BrandProvider theme={theme} locale={locale} brand={{ name: "OpenAsy", organization: undefined, ...installBrand }} className="min-h-screen">

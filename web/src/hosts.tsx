@@ -21,7 +21,7 @@ import { Check, Copy, KeyRound, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { Agent, AgentSetup, Host, HostsFile } from "./api.ts";
 import type { Call } from "./App.tsx";
-import { useT, type T } from "./i18n.ts";
+import { useT, type T, viewerLocale } from "./i18n.ts";
 
 // What to write in the hosts file (ADR 0052), shown where there is nothing yet.
 const EXAMPLE = `hosts:
@@ -158,7 +158,7 @@ export function HostsPage({ call }: { call: Call }) {
       width: "90px",
       align: "right",
       mono: true,
-      cell: (h) => h.eventsIn.toLocaleString(),
+      cell: (h) => h.eventsIn.toLocaleString(viewerLocale()),
       sortValue: (h) => h.eventsIn,
     },
     { id: "last", header: t("hostsPage.lastRead"), width: "110px", cell: (h) => (h.lastSuccessAt ? ago(h.lastSuccessAt) : "–") },
@@ -207,7 +207,7 @@ export function HostsPage({ call }: { call: Call }) {
       {agents.length > 0 && data?.hosts.length === 0 && (
         <EmptyState title={t("hostsPage.noHostsYet")}>
           {file ? t("hostsPage.noHostsYetPrepareOne") : t("hostsPage.noHostsFile")}
-          <div className="mt-3 text-left">
+          <div className="mt-3 text-start">
             <CopyCode label={t("hostsPage.linesForTheHostsFile")}>{EXAMPLE}</CopyCode>
           </div>
         </EmptyState>
@@ -247,7 +247,7 @@ function EnrollCommand({ token, expiresAt, version, onDone }: { token: string; e
       icon={<Check aria-hidden className="size-4" />}
       iconTone="success"
       title={t("enrollCommand.startTheAgentWithThis")}
-      description={t("enrollCommand.itWorksOnceUntilAnd", { value: new Date(expiresAt).toLocaleString() })}
+      description={t("enrollCommand.itWorksOnceUntilAnd", { value: new Date(expiresAt).toLocaleString(viewerLocale()) })}
       footer={
         <Button variant="primary" onClick={onDone}>
           {t("enrollCommand.done")}
